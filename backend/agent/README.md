@@ -2,14 +2,17 @@
 
 负责人：5号。
 
-当前是"本地关键词检索 + 可选大模型增强"版本，后续可扩展为完整智能体工作流或替换为 MaxKB、RAGFlow。
+当前是"关键词检索 RAG + 可选大模型增强"版本，后续可替换为向量检索（MaxKB/RAGFlow）或完整智能体工作流。
 
-## 目录职责
+## RAG 流程
 
-- `assistantService.js`：问答入口，负责校验、知识库检索、调用大模型、降级与响应组装。
+用户问题 → retriever 检索 → Top K 相关知识 → 组装上下文 → Prompt → LLM → 回答
+
+- `rag/knowledgeBase.js`：规范化知识条目（id/title/category/content/keywords/source）。
+- `rag/retriever.js`：关键词命中评分检索，返回匹配知识、来源与相关度；后续替换为向量检索时调用方接口不变。
+- `rag/prompts.md`：大模型 System Prompt（智能体行为约束）。
+- `assistantService.js`：问答入口，负责校验、调用检索、组装上下文与 Prompt、调用大模型、降级与响应组装。
 - `llmClient.js`：大模型调用封装，与具体厂商解耦（兼容 OpenAI 接口协议即可）。
-- `rag/knowledgeBase.js`：本地知识库。
-- `rag/prompts.md`：大模型 System Prompt。
 
 ## 大模型接入（可选）
 
@@ -30,13 +33,14 @@
 
 - 大模型不可用（未配置、网络失败、超时、非 200、返回为空）时自动降级为本地知识库回答，接口始终可用，服务器不会因大模型故障崩溃。
 - 响应中 `answerSource` 字段标识回答来源：`llm`（大模型生成）或 `local`（本地知识库/未找到）。
+- 响应中 `sources` 字段返回引用的知识条目标题，供前端显示"参考来源"。
 
 ## 本地测试
 
 在项目根目录（WSL）执行：
 
 ```text
-node --test backend/agent/assistantService.test.js
+node --test backend/agent/assistantService.test.js backend/rag/retriever.test.js
 ```
 
-测试覆盖：知识命中、无命中提示、空问题校验、响应格式、大模型成功调用、失败降级。
+测试覆盖：检索命中/评分排序/limit/无命中、知识命中、无命中提示、空问题校验、响应格式、大模型成功调用、失败降级。

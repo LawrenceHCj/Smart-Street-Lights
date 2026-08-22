@@ -1,10 +1,11 @@
 const fs = require("fs");
 const path = require("path");
 const { nowIso } = require("../utils/date");
-const { knowledgeBase } = require("../rag/knowledgeBase");
+const { retrieve } = require("../rag/retriever");
 const { completeChat, getConfig } = require("./llmClient");
 
 const PROMPTS_FILE = path.join(__dirname, "..", "rag", "prompts.md");
+const TOP_K = 2;
 let systemPromptCache;
 
 function loadSystemPrompt() {
@@ -19,12 +20,15 @@ function loadSystemPrompt() {
   return systemPromptCache;
 }
 
-function buildUserPrompt(question, matches) {
-  const context = matches.length
-    ? matches.slice(0, 2).map((item) => `《${item.title}》\n${item.content}`).join("\n\n")
-    : "（知识库未检索到相关内容）";
+// Build Context：把检索结果整理为大模型可读的知识上下文
+function buildContext(matches) {
+  if (!matches.length) return "（知识库未检索到相关内容）";
+  return matches.map((item) => `【${item.category}】《${item.title}》\n${item.content}`).join("\n\n");
+}
 
-  return `【知识库内容】\n${context}\n\n【用户问题】\n${question}`;
+// Prompt：知识上下文 + 用户问题
+function buildUserPrompt(question, matches) {
+  return `【知识库内容】\n${buildContext(matches)}\n\n【用户问题】\n${question}`;
 }
 
 function localAnswer(matches) {
@@ -35,10 +39,9 @@ function localAnswer(matches) {
     };
   }
 
-  const sources = matches.slice(0, 2);
   return {
-    answer: sources.map((source) => source.content).join(" "),
-    sources: sources.map((source) => source.title),
+    answer: matches.map((item) => item.content).join(" "),
+    sources: matches.map((item) => item.title),
   };
 }
 
@@ -50,7 +53,7 @@ async function answerMaintenanceQuestion(question) {
   }
 
   const text = question.trim();
-  const matches = knowledgeBase.filter((item) => item.keywords.some((keyword) => text.includes(keyword)));
+  const matches = retrieve(text, { limit: TOP_K });
   const fallback = () => ({ ...localAnswer(matches), answerSource: "local", generatedAt: nowIso() });
 
   // 未配置大模型或 Prompt 缺失时，直接走本地知识库回答
@@ -63,7 +66,7 @@ async function answerMaintenanceQuestion(question) {
     });
     return {
       answer,
-      sources: matches.slice(0, 2).map((item) => item.title),
+      sources: matches.map((item) => item.title),
       answerSource: "llm",
       generatedAt: nowIso(),
     };

@@ -49,6 +49,20 @@ test("手动控制问题返回控制回执知识（本地模式）", async () =>
   assert.ok(result.sources.includes("手动控制回执"));
 });
 
+test("设备频繁离线问题命中离线排查知识（本地模式）", async () => {
+  const result = await answerMaintenanceQuestion("设备频繁离线应该检查什么？");
+
+  assert.ok(result.sources.includes("设备离线排查"), "回答应引用离线排查知识");
+  assert.ok(result.answer.includes("心跳"));
+});
+
+test("光照联动异常问题命中光照联动控制知识（本地模式）", async () => {
+  const result = await answerMaintenanceQuestion("光照联动异常应该怎么排查？");
+
+  assert.ok(result.sources.includes("光照联动控制"), "回答应引用光照联动控制知识");
+  assert.ok(result.answer.includes("阈值"));
+});
+
 test("无命中问题返回空来源和明确提示（本地模式）", async () => {
   const result = await answerMaintenanceQuestion("今天天气怎么样？");
 
@@ -97,7 +111,8 @@ test("配置大模型时命中问题由模型生成回答", async (t) => {
   assert.ok(result.sources.includes("设备离线排查"), "来源仍应包含知识库条目");
   assert.equal(received.model, "mock-model");
   assert.ok(received.messages[0].content.includes("智慧路灯维护助手"), "System Prompt 应包含角色约束");
-  assert.ok(received.messages[1].content.includes("设备离线排查"), "用户消息应携带知识库上下文");
+  assert.ok(received.messages[1].content.includes("《设备离线排查》"), "用户消息应携带知识库上下文");
+  assert.ok(received.messages[1].content.includes("告警处理"), "上下文应包含知识分类");
 });
 
 test("知识库无命中但配置大模型时由模型按范围回答", async (t) => {
