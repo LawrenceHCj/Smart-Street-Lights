@@ -73,6 +73,12 @@ Smart Street Lights/
 docs/team-division.md
 ```
 
+每日任务清单见：
+
+```text
+docs/daily-task-plan.md
+```
+
 ## 当前已实现能力
 
 - 设备状态展示
