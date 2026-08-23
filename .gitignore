@@ -11,6 +11,7 @@ mvnw.cmd
 
 # JavaScript 与本地机密
 node_modules/
+
 .env
 
 # 日志、系统文件与本地计划
