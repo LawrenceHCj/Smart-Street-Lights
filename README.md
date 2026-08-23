@@ -79,6 +79,15 @@ docs/team-division.md
 docs/daily-task-plan.md
 ```
 
+架构图见：
+
+```text
+docs/functional-architecture.md
+docs/technical-architecture.md
+docs/functional-architecture.svg
+docs/technical-architecture.svg
+```
+
 ## 当前已实现能力
 
 - 设备状态展示
@@ -121,7 +130,7 @@ docs/api.md
 5. 6号维护测试用例、部署说明和联调记录。
 6. 1号同步维护需求文档、进度和答辩材料。
 
-## 验证
+## 运行验证
 
 启动后可以检查：
 
@@ -130,7 +139,7 @@ http://localhost:3000
 http://localhost:3000/api/summary
 ```
 
-核心演示流程：
+核心联调流程：
 
 1. 打开首页。
 2. 切换低光场景，观察自动开灯。

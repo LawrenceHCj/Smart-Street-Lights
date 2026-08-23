@@ -28,5 +28,5 @@ npm run dev
 
 - `frontend/` 页面可访问。
 - `/api/summary` 正常返回。
-- 低光、高光、离线场景可演示。
+- 低光、高光、离线场景可验证。
 - `docs/team-division.md`、`docs/test-cases.md`、`docs/deployment.md` 已更新。
