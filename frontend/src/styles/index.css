@@ -1,37 +1,31 @@
-/* ============================================================
-   智慧路灯 · Grok 式高级暗色设计系统
-   方向契约：暖调炭黑画布 / 路灯金唯一强调 / 克制通透
-   告别科技蓝控制室：大面积中性炭黑，金色只服务光与强调
-   ============================================================ */
+/* 智慧路灯 · 夜间城市指挥中心设计令牌 */
 
 :root {
-  /* —— 表面（暖调炭黑，非蓝灰） —— */
-  --bg-root: #0d0d10;
-  --bg-surface: #131317;
-  --bg-surface-2: #19191e;
-  --bg-elevated: #202027;
-  --border-subtle: rgba(255, 255, 255, 0.06);
-  --border: rgba(255, 255, 255, 0.1);
-  --border-strong: rgba(255, 255, 255, 0.16);
+  --bg-root: #07111d;
+  --bg-surface: #0c1a2a;
+  --bg-surface-2: #102338;
+  --bg-elevated: #142a41;
+  --border-subtle: rgba(137, 170, 207, 0.12);
+  --border: rgba(137, 170, 207, 0.22);
+  --border-strong: rgba(163, 192, 224, 0.32);
 
-  /* —— 文本（暖白，非冷白） —— */
-  --text-primary: #f2f1ed;
-  --text-secondary: #a3a19a;
-  --text-muted: #87857d;
+  --text-primary: #edf5ff;
+  --text-secondary: #a8bad2;
+  --text-muted: #7288a4;
 
   /* —— 强调 · 路灯金（克制使用） —— */
-  --accent: #dfb34f;
-  --accent-bright: #efc878;
-  --accent-deep: #b98d3a;
-  --accent-glow: rgba(223, 179, 79, 0.28);
-  --accent-dim: rgba(223, 179, 79, 0.11);
+  --accent: #f1b94e;
+  --accent-bright: #ffd47b;
+  --accent-deep: #c98f29;
+  --accent-glow: rgba(241, 185, 78, 0.28);
+  --accent-dim: rgba(241, 185, 78, 0.12);
 
   /* —— 语义状态 —— */
-  --ok: #56bc8c;
+  --ok: #42d28b;
   --ok-glow: rgba(86, 188, 140, 0.35);
   --warn: #f2943a;
   --warn-glow: rgba(242, 148, 58, 0.35);
-  --danger: #e2625a;
+  --danger: #fb755f;
   --danger-glow: rgba(226, 98, 90, 0.35);
 
   /* —— 字体 —— */
@@ -41,17 +35,17 @@
     "Consolas", "Menlo", monospace;
 
   /* —— Element Plus 主色（路灯金） —— */
-  --el-color-primary: #dfb34f;
-  --el-color-primary-light-3: #e8c26e;
-  --el-color-primary-light-5: #eecf8d;
-  --el-color-primary-light-7: #f4ddae;
-  --el-color-primary-light-8: #f7e5c2;
-  --el-color-primary-light-9: #fbf0da;
-  --el-color-primary-dark-2: #b98d3a;
+  --el-color-primary: #f1b94e;
+  --el-color-primary-light-3: #f5cb7c;
+  --el-color-primary-light-5: #f8d99e;
+  --el-color-primary-light-7: #fbe7bf;
+  --el-color-primary-light-8: #fdf0d5;
+  --el-color-primary-light-9: #fff8ea;
+  --el-color-primary-dark-2: #c98f29;
 
   /* —— 阴影（柔和、有位移） —— */
-  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px -14px rgba(0, 0, 0, 0.55);
-  --shadow-lift: 0 2px 4px rgba(0, 0, 0, 0.4), 0 16px 40px -20px rgba(0, 0, 0, 0.7);
+  --shadow-soft: 0 10px 30px -22px rgba(0, 0, 0, 0.86);
+  --shadow-lift: 0 18px 44px -24px rgba(0, 0, 0, 0.92);
 }
 
 * {
@@ -74,10 +68,7 @@ body {
   font-family: var(--font-ui);
   font-size: 14px;
   line-height: 1.6;
-  background:
-    radial-gradient(1100px 720px at 84% -12%, rgba(223, 179, 79, 0.05), transparent 62%),
-    radial-gradient(820px 620px at -12% 112%, rgba(255, 255, 255, 0.02), transparent 56%),
-    var(--bg-root);
+  background: radial-gradient(1000px 680px at 88% -10%, rgba(30, 85, 135, 0.2), transparent 62%), var(--bg-root);
   background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -285,9 +276,9 @@ html.dark .el-button {
   font-weight: 500;
 }
 html.dark .el-button--primary {
-  --el-button-text-color: #221f16;
-  --el-button-hover-text-color: #221f16;
-  --el-button-active-text-color: #221f16;
+  --el-button-text-color: #13100a;
+  --el-button-hover-text-color: #13100a;
+  --el-button-active-text-color: #13100a;
   --el-button-bg-color: var(--accent);
   --el-button-hover-bg-color: var(--accent-bright);
   --el-button-active-bg-color: var(--accent-deep);

@@ -31,17 +31,25 @@
 
     <el-container class="body">
       <el-header class="header">
-        <div class="header-title">{{ route.meta.title }}</div>
+        <div class="header-title">
+          <el-icon><Menu /></el-icon>
+          <span>{{ route.meta.title }}</span>
+        </div>
         <div class="header-right">
+          <span class="clock num">{{ fullClock }}</span>
+          <span class="divider"></span>
           <div class="live">
             <span class="status-dot online"></span>
-            <span>系统在线</span>
+            <span>系统正常</span>
           </div>
-          <span class="clock num">{{ clock }}</span>
           <span class="divider"></span>
+          <el-button text class="notice" aria-label="告警通知">
+            <el-icon><Bell /></el-icon><sup>12</sup>
+          </el-button>
+          <div class="user-avatar">A</div>
+          <span class="user-name">admin</span>
           <el-button text class="logout" @click="logout">
             <el-icon><SwitchButton /></el-icon>
-            <span>退出</span>
           </el-button>
         </div>
       </el-header>
@@ -65,28 +73,29 @@ import {
   User,
   ChatDotRound,
   SwitchButton,
+  Menu,
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
 
 const nav = [
-  { path: '/dashboard', label: '数据大屏', icon: DataBoard },
-  { path: '/monitor', label: '光照监测', icon: Sunny },
-  { path: '/control', label: '设备控制', icon: Operation },
-  { path: '/alarms', label: '告警管理', icon: Bell },
+  { path: '/dashboard', label: '运行概览', icon: DataBoard },
+  { path: '/monitor', label: '实时监控', icon: Sunny },
+  { path: '/control', label: '灯控管理', icon: Operation },
+  { path: '/alarms', label: '告警中心', icon: Bell },
   { path: '/devices', label: '设备管理', icon: Tools },
-  { path: '/users', label: '用户权限', icon: User },
-  { path: '/chat', label: '智能问答', icon: ChatDotRound },
+  { path: '/chat', label: '智能助手', icon: ChatDotRound },
+  { path: '/users', label: '用户管理', icon: User },
 ]
 
 // 实时时钟：控制室的实时感，安静呈现
-const clock = ref('')
+const fullClock = ref('')
 let timer: ReturnType<typeof setInterval> | null = null
 function tick() {
   const d = new Date()
   const p = (n: number) => String(n).padStart(2, '0')
-  clock.value = `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+  fullClock.value = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 onMounted(() => {
   tick()
@@ -111,13 +120,13 @@ function logout() {
 .aside {
   display: flex;
   flex-direction: column;
-  background: var(--bg-root);
+  background: #07131f;
   border-right: 1px solid var(--border-subtle);
   color: var(--text-secondary);
 }
 
 .brand {
-  height: 68px;
+  height: 76px;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -128,31 +137,31 @@ function logout() {
   height: 38px;
   display: grid;
   place-items: center;
-  border-radius: 11px;
-  background: var(--accent-dim);
-  border: 1px solid rgba(223, 179, 79, 0.25);
+  border-radius: 10px;
+  background: transparent;
+  border: none;
   color: var(--accent-bright);
   transition: background 0.2s ease, transform 0.2s ease;
 }
 .brand-mark :deep(.el-icon) {
-  font-size: 20px;
+  font-size: 27px;
 }
 .brand-mark:hover {
-  background: var(--accent);
-  color: #221f16;
+  background: transparent;
+  color: var(--accent-bright);
   transform: translateY(-1px);
 }
 .brand-text {
   line-height: 1.25;
 }
 .brand-name {
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: 0.01em;
 }
 .brand-sub {
-  font-size: 9px;
+  display: none;
   letter-spacing: 0.1em;
   color: var(--text-muted);
   margin-top: 2px;
@@ -161,18 +170,18 @@ function logout() {
 .menu {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 14px 12px;
+  gap: 7px;
+  padding: 8px 12px;
   overflow-y: auto;
 }
 .menu-item {
   display: flex;
   align-items: center;
   gap: 11px;
-  height: 42px;
+  height: 46px;
   padding: 0 13px;
   border: none;
-  border-radius: 10px;
+  border-radius: 6px;
   background: transparent;
   color: var(--text-secondary);
   font-family: inherit;
@@ -186,14 +195,15 @@ function logout() {
   color: var(--text-primary);
 }
 .menu-item.active {
-  background: var(--accent-dim);
-  color: var(--accent-bright);
+  background: linear-gradient(90deg, rgba(46, 111, 213, 0.34), rgba(35, 85, 164, 0.22));
+  color: #8db8ff;
+  box-shadow: inset 2px 0 0 #508cff;
 }
 .menu-icon {
   font-size: 18px;
 }
 .menu-item.active .menu-icon {
-  color: var(--accent);
+  color: #75a4ff;
 }
 
 .aside-foot {
@@ -219,23 +229,25 @@ function logout() {
   min-width: 0;
 }
 .header {
-  height: 68px;
+  height: 56px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 28px;
-  background: var(--bg-root);
+  padding: 0 26px;
+  background: rgba(7, 17, 29, 0.9);
   border-bottom: 1px solid var(--border-subtle);
 }
 .header-title {
-  font-size: 16px;
-  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 0;
   color: var(--text-primary);
 }
 .header-right {
   display: flex;
   align-items: center;
-  gap: 18px;
+  gap: 14px;
 }
 .live {
   display: inline-flex;
@@ -245,7 +257,7 @@ function logout() {
   color: var(--text-secondary);
 }
 .clock {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-secondary);
   letter-spacing: 0.03em;
 }
@@ -256,18 +268,50 @@ function logout() {
 }
 .logout {
   color: var(--text-secondary);
-  padding: 6px 8px;
+  padding: 5px;
   border-radius: 8px;
 }
 .logout:hover {
   color: var(--danger);
 }
-.logout :deep(.el-icon) {
-  margin-right: 6px;
+.notice {
+  position: relative;
+  padding: 5px;
+  color: var(--text-secondary);
+}
+.notice sup {
+  position: absolute;
+  top: -2px;
+  right: -5px;
+  display: grid;
+  place-items: center;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 9px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 9px;
+  line-height: 1;
+}
+.user-avatar {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #d9e3ef;
+  color: #25394e;
+  font-size: 12px;
+  font-weight: 700;
+}
+.user-name {
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 
 .main {
-  padding: 24px 28px 32px;
+  padding: 20px 22px 30px;
   overflow-y: auto;
 }
 
