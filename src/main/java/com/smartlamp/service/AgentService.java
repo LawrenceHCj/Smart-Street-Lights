@@ -120,12 +120,13 @@ public class AgentService {
         return assistant;
     }
 
-    // 组装 sources：知识库工具 → 每条匹配知识一个来源（section=知识分类）；系统数据工具 → 一个来源（section=system_data）
+    // 组装 sources：知识库工具 → 每条匹配知识一个来源（section=knowledge）；
+    // 系统数据工具 → 一个来源（section=system_data）；web 来源类型预留
     private List<SourceItem> buildSources(List<ExecutedTool> executed, String question) {
         if (executed.isEmpty()) {
             // 模型未调任何工具：附带本地检索到的知识作为来源
             return retriever.retrieve(question, TOP_K).stream()
-                    .map(m -> new SourceItem(m.entry().getTitle(), m.entry().getCategory(), (double) m.score()))
+                    .map(m -> new SourceItem(m.entry().getTitle(), "knowledge", (double) m.score()))
                     .collect(Collectors.toList());
         }
 
@@ -135,7 +136,7 @@ public class AgentService {
                 for (JsonNode match : tool.result().path("matches")) {
                     sources.add(new SourceItem(
                             match.path("title").asText(),
-                            match.path("category").asText(),
+                            "knowledge",
                             match.path("score").asDouble()));
                 }
             } else {
@@ -155,7 +156,7 @@ public class AgentService {
         } else {
             answer = matches.stream().map(m -> m.entry().getContent()).collect(Collectors.joining(" "));
             sources = matches.stream()
-                    .map(m -> new SourceItem(m.entry().getTitle(), m.entry().getCategory(), (double) m.score()))
+                    .map(m -> new SourceItem(m.entry().getTitle(), "knowledge", (double) m.score()))
                     .collect(Collectors.toList());
         }
         return new AskResponse(answer, sources);

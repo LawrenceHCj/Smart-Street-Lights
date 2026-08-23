@@ -114,7 +114,7 @@ class AgentServiceTest {
         // "路灯离线"命中两条知识（设备离线排查 + 设备状态异常），均来自知识库
         assertThat(result.getSources()).hasSize(2);
         assertThat(result.getSources()).anyMatch(s -> "设备离线排查".equals(s.getTitle()));
-        assertThat(result.getSources()).allMatch(s -> "告警处理".equals(s.getSection()) || "设备状态".equals(s.getSection()));
+        assertThat(result.getSources()).allMatch(s -> "knowledge".equals(s.getSection()));
     }
 
     // ============ 场景2：当前设备状态 → 设备工具 ============
