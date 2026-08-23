@@ -6,11 +6,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -109,6 +111,20 @@ class LlmClientTest {
 
         assertThatThrownBy(() -> newClient().completeChat("s", "u"))
                 .isInstanceOf(LlmException.class);
+    }
+
+    @Test
+    void 工具调用响应解析出toolCalls() throws IOException {
+        respondWith("{\"choices\":[{\"message\":{\"content\":null,\"tool_calls\":[{\"id\":\"call-1\",\"type\":\"function\",\"function\":{\"name\":\"get_device_status\",\"arguments\":\"{\\\"deviceCode\\\":\\\"lamp001\\\"}\"}}]}}]}");
+        LlmClient client = newClient();
+
+        List<ObjectNode> messages = List.of(client.message("user", "lamp001现在在线吗？"));
+        LlmClient.ChatResponse response = client.completeChat(messages, new ObjectMapper().createArrayNode());
+
+        assertThat(response.content()).isNull();
+        assertThat(response.toolCalls()).hasSize(1);
+        assertThat(response.toolCalls().get(0).name()).isEqualTo("get_device_status");
+        assertThat(response.toolCalls().get(0).arguments().path("deviceCode").asText()).isEqualTo("lamp001");
     }
 
     @Test

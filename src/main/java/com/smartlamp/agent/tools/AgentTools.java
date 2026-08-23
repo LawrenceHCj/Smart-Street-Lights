@@ -77,6 +77,14 @@ public class AgentTools {
         return alarms == null ? List.of() : alarms;
     }
 
+    // 查询指定设备的告警记录（只读，按时间倒序）
+    public List<Alarm> getAlertHistory(String deviceCode) {
+        String code = requireText(deviceCode, "deviceCode");
+        return getAlertHistory().stream()
+                .filter(alarm -> code.equals(alarm.getDeviceId()))
+                .toList();
+    }
+
     // ============ 配置 ============
 
     // 查询光照联动配置（只读，附带能力：智能体回答阈值问题时取真实配置）
