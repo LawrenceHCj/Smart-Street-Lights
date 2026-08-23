@@ -115,7 +115,7 @@ test("配置大模型时命中问题由模型生成回答", async (t) => {
   assert.ok(received.messages[1].content.includes("告警处理"), "上下文应包含知识分类");
 });
 
-test("知识库无命中但配置大模型时由模型按范围回答", async (t) => {
+test("新增巡检知识命中后仍可由模型结合上下文回答", async (t) => {
   const { server, port } = await startMockLlmServer((req, res) => {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ choices: [{ message: { content: "模拟大模型回答：建议每季度巡检一次。" } }] }));
@@ -129,7 +129,7 @@ test("知识库无命中但配置大模型时由模型按范围回答", async (t
   const result = await answerMaintenanceQuestion("路灯一般多久需要维护一次？");
 
   assert.equal(result.answerSource, "llm");
-  assert.deepEqual(result.sources, []);
+  assert.ok(result.sources.includes("例行巡检清单"));
 });
 
 test("模型接口返回 500 时降级为本地知识库回答", async (t) => {
