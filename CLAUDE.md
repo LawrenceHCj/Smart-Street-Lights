@@ -6,8 +6,8 @@
 当前项目基本情况
 项目当前采用：
 
-Node.js 后端
-原生前端
+Java Spring Boot 后端
+Vue 3 前端
 前后端分离
 Git 多人分支协作
 
@@ -16,25 +16,16 @@ Git 多人分支协作
 frontend/
 
 backend/
-  routes/
-  services/
-  store/
-  models/
-  simulator/
-  iot/
-  agent/
-  rag/
-  realtime/
-  config/
-  utils/
+  pom.xml
+  src/main/java/com/smartlamp/
+  src/main/resources/
 
-data/
 docs/
 
 5号的职责范围主要是：
 
-backend/agent/
-backend/rag/
+backend/src/main/java/com/smartlamp/agent/
+backend/src/main/java/com/smartlamp/service/
 
 目前已经存在：
 
@@ -298,10 +289,6 @@ Git 提交由 5号 自己完成。
 - LLM 调用：JDK 内置 java.net.http.HttpClient，零新增依赖；配置走 application.yml 的 llm: 段（LLM_API_KEY / LLM_BASE_URL / LLM_MODEL 环境变量占位，未配置自动降级本地知识库回答）；团队默认 DeepSeek：base-url https://api.deepseek.com、model deepseek-chat。
 - Java 编码风格：Lombok @Data；@Autowired 字段注入；中文注释；@Value 读取配置（kebab 键）；Jackson 3 包名 tools.jackson.*（非 com.fasterxml）。
 - 测试：JUnit 5 + AssertJ + Mockito（Spring Boot test starter 自带），纯单测不依赖 MySQL/MQTT。
-
-## 旧 Node 版（历史过渡）
-
-- backend/ 目录为 Node.js CommonJS 实现，保留于 wwn-agent 分支作对照与过渡，不再新增功能。
 
 ## 前端（2号负责，已迁移到 Vue）
 

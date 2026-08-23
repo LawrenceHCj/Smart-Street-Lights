@@ -1,28 +1,26 @@
 # 智慧路灯系统
 
-本仓库用于智慧路灯系统的前后端开发与联调。当前 `main` 已合并前端 Vue3 工程、Node.js 联调后端，以及 Java Spring Boot 后端代码。
+本仓库用于智慧路灯系统的前后端开发与联调，后端统一使用 Java Spring Boot。
 
 ## 技术栈
 
 | 模块 | 技术 | 目录 |
 |---|---|---|
 | 前端 | Vue 3、TypeScript、Vite、Element Plus、ECharts | `frontend/` |
-| Node 联调后端 | Node.js 原生 HTTP、SSE、本地 JSON 状态、设备模拟器 | `backend/` |
-| Java 后端 | Spring Boot、Spring Security、JWT、JPA、MySQL、MQTT | `src/`、`pom.xml` |
+| 后端 | Spring Boot、Spring Security、JWT、JPA、MySQL、MQTT | `backend/` |
 | 文档 | 需求、分工、每日任务、架构图、接口说明 | `docs/` |
-| 运行数据 | Node 联调后端本地状态文件 | `data/` |
 
 ## 推荐启动方式
 
-开发前端时，推荐先使用 Node 联调后端，因为它不依赖 MySQL 和 MQTT，适合快速进入页面和调接口。
+Java Spring Boot 是唯一后端：设备、遥测、告警和联动配置均写入 MySQL，设备控制通过 MQTT 下发。
 
 ### 1. 启动后端
 
 在项目根目录执行：
 
 ```powershell
-cd "C:\Users\Lawrence\Desktop\Smart Street Lights"
-npm run backend
+cd "C:\Users\Lawrence\Desktop\Smart Street Lights\backend"
+mvn spring-boot:run
 ```
 
 后端地址：
@@ -61,9 +59,9 @@ http://localhost:5173
 
 所以浏览器访问 `http://localhost:5173` 即可，不需要直接打开后端地址。
 
-## Java 后端启动方式
+## 后端启动方式
 
-Java 后端位于项目根目录的 `src/`，使用 Maven 管理。启动前需要准备：
+后端位于 `backend/`，使用 Maven 管理。启动前需要准备：
 
 - JDK 17
 - Maven
@@ -76,27 +74,19 @@ Java 后端位于项目根目录的 `src/`，使用 Maven 管理。启动前需�
 配置文件：
 
 ```text
-src/main/resources/application.yml
+backend/src/main/resources/application.yml
 ```
 
 启动命令：
 
 ```powershell
-cd "C:\Users\Lawrence\Desktop\Smart Street Lights"
+cd "C:\Users\Lawrence\Desktop\Smart Street Lights\backend"
 mvn spring-boot:run
 ```
 
-注意：Node 后端和 Java 后端都使用 `8080` 端口，不能同时启动。前端只需要后端接口符合 `/api/**` 协议即可。
+前端代理会将 `/api/**` 请求转发到后端的 `8080` 端口。
 
 ## 常用命令
-
-### 根目录
-
-```powershell
-npm run backend   # 启动 Node 联调后端，端口 8080
-npm run dev       # 同 npm run backend
-npm run check     # 检查 Node 后端入口语法
-```
 
 ### 前端目录
 
@@ -107,9 +97,10 @@ npm run build     # 类型检查并构建前端
 npm run preview   # 预览构建产物
 ```
 
-### Java 后端
+### 后端目录
 
 ```powershell
+cd backend
 mvn spring-boot:run
 mvn test
 ```
@@ -126,18 +117,9 @@ Smart Street Lights/
       router/                  路由
       styles/                  样式
 
-  backend/                     Node 联调后端
-    server.js                  启动入口
-    routes/                    API 路由
-    services/                  业务逻辑
-    store/                     本地状态读写
-    simulator/                 IoT 设备模拟器
-    iot/                       MQTT Topic 预留
-    agent/                     AI 问答服务
-    rag/                       RAG 知识库与检索
-    realtime/                  SSE 实时推送
-
-  src/main/java/com/smartlamp/ Java Spring Boot 后端
+  backend/                     Java Spring Boot 后端
+    pom.xml                    Maven 配置
+    src/main/java/com/smartlamp/
     controller/                控制器
     service/                   业务服务
     repository/                数据访问
@@ -147,9 +129,6 @@ Smart Street Lights/
     mqtt/                      MQTT 消息处理
 
   docs/                        项目文档
-  data/                        Node 后端运行数据，不作为业务代码提交
-  pom.xml                      Java 后端 Maven 配置
-  package.json                 Node 联调后端脚本
 ```
 
 ## 团队分工
@@ -158,9 +137,9 @@ Smart Street Lights/
 |---|---|---|
 | 1号 | 项目经理与需求文档负责人 | `docs/`、`README.md`、进度协调 |
 | 2号 | 前端与数据可视化负责人 | `frontend/` |
-| 3号 | 后端与数据库负责人 | `src/main/java/`、数据库、接口实现 |
-| 4号 | IoT 模拟设备与 MQTT 通信负责人 | `backend/simulator/`、`backend/iot/`、`src/main/java/com/smartlamp/mqtt/` |
-| 5号 | AI 智能体与 RAG 负责人 | `backend/agent/`、`backend/rag/`、`src/main/java/com/smartlamp/service/AgentService.java` |
+| 3号 | 后端与数据库负责人 | `backend/src/main/java/`、数据库、接口实现 |
+| 4号 | IoT 与 MQTT 通信负责人 | `backend/src/main/java/com/smartlamp/mqtt/` |
+| 5号 | AI 智能体与 RAG 负责人 | `backend/src/main/java/com/smartlamp/agent/`、`backend/src/main/java/com/smartlamp/service/AgentService.java` |
 | 6号 | 系统测试、集成与部署负责人 | `docs/test-cases.md`、`docs/deployment.md`、构建和联调 |
 
 详细分工见：
@@ -223,15 +202,14 @@ frontend/前端接口协议.md
 
 ## 开发注意事项
 
-1. 前端日常开发优先启动 `frontend` + `backend`，确保页面可跑通。
-2. Java 后端接入时，保持接口路径和返回格式与前端协议一致：`{ code, message, data }`。
-3. `data/app-state.json` 是 Node 联调后端运行数据，可能会频繁变化，一般不要提交。
-4. Node 后端和 Java 后端都占用 `8080`，启动前确认端口没有被占用。
+1. 前端日常开发启动 `frontend` 与 Java `backend`，确保页面可跑通。
+2. 后端接口路径和返回格式应与前端协议一致：`{ code, message, data }`。
+3. 启动前确认 `8080` 端口没有被占用。
 5. 浏览器提示“拒绝连接”通常是对应服务没有启动，或前端代理指向的后端端口没有运行。
 
 ## 验证流程
 
-1. 启动 Node 后端：`npm run backend`。
+1. 启动后端：`cd backend && mvn spring-boot:run`。
 2. 启动前端：`cd frontend && npm run dev`。
 3. 打开 `http://localhost:5173`。
 4. 使用 `admin / 123456` 登录。
