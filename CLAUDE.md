@@ -294,8 +294,8 @@ Git 提交由 5号 自己完成。
 - 后端：Java 17 + Spring Boot 4.1.1 + Maven（pom.xml），包结构 com.smartlamp.*。
 - 数据库：MySQL + Spring Data JPA（ddl-auto: update）。
 - 通信：REST API（统一 ApiResponse{code,message,data} 包装，HTTP 恒 200，业务错误看 body.code，400=参数类错误、500=其他）+ MQTT（Spring Integration）。
-- 智能体（5号）：com.smartlamp.agent 包（知识库/检索/LLM 客户端）+ service 包内 AgentService，接口 POST /api/agent/ask。
-- LLM 调用：JDK 内置 java.net.http.HttpClient，零新增依赖；配置走 application.yml 的 llm: 段（LLM_API_KEY / LLM_BASE_URL / LLM_MODEL 环境变量占位）。
+- 智能体（5号）：已移植完成（wwn-agent-java 分支，提交 925264b）——com.smartlamp.agent 包（知识库 15 条/检索/LLM 客户端）+ service 包内 AgentService，接口 POST /api/agent/ask，回答 sources 为 {title, section, score} 对象数组。
+- LLM 调用：JDK 内置 java.net.http.HttpClient，零新增依赖；配置走 application.yml 的 llm: 段（LLM_API_KEY / LLM_BASE_URL / LLM_MODEL 环境变量占位，未配置自动降级本地知识库回答）；团队默认 DeepSeek：base-url https://api.deepseek.com、model deepseek-chat。
 - Java 编码风格：Lombok @Data；@Autowired 字段注入；中文注释；@Value 读取配置（kebab 键）；Jackson 3 包名 tools.jackson.*（非 com.fasterxml）。
 - 测试：JUnit 5 + AssertJ + Mockito（Spring Boot test starter 自带），纯单测不依赖 MySQL/MQTT。
 
@@ -303,8 +303,9 @@ Git 提交由 5号 自己完成。
 
 - backend/ 目录为 Node.js CommonJS 实现，保留于 wwn-agent 分支作对照与过渡，不再新增功能。
 
-## 前端（2号负责）
+## 前端（2号负责，已迁移到 Vue）
 
-- 原生 HTML/CSS/JS，无框架、无构建工具、不使用 React/TypeScript。
+- Vue 3 + TypeScript + Vite（type: module，ESM）+ Element Plus + ECharts + vue-router + axios；代码在 origin/frontend 分支的 frontend/ 目录。
+- 已适配新后端契约：问答调 POST /api/agent/ask，sources 为对象数组。
 
-当前不使用 ES modules、TypeScript、React。如未来团队正式决定迁移技术栈，需先更新本节内容，再让相关工具按新规范工作。
+说明：后端为 Java（不使用 ES modules/TypeScript）；前端为 Vue 生态的 ESM + TypeScript；全项目不使用 React。如未来团队正式决定再次迁移技术栈，需先更新本节内容，再让相关工具按新规范工作。
