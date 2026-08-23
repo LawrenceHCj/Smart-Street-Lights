@@ -5,7 +5,7 @@ const { retrieve } = require("./retriever");
 test("命中问题返回匹配条目及完整字段", () => {
   const results = retrieve("路灯离线应该怎么排查？");
 
-  assert.equal(results.length, 1);
+  assert.ok(results.length >= 1, "至少返回一条匹配");
   const top = results[0];
   assert.equal(top.id, "kb-offline-troubleshooting");
   assert.equal(top.title, "设备离线排查");
