@@ -289,13 +289,22 @@ Git 提交由 5号 自己完成。
 
 以下为项目当前真实技术栈，写代码、做代码审查、使用 code-simplifier 等工具时都必须遵守：
 
-- 后端：Node.js（CommonJS 模块，require / module.exports），不使用 ES modules。
-- 依赖：纯 Node 内置模块，零 npm 依赖（HTTP 服务用内置 http 模块，无 Express 等框架）。
-- Node 版本：>= 18（WSL Ubuntu 中已安装 Node 24）。
-- 前端：原生 HTML/CSS/JS，无框架、无构建工具、不使用 React/TypeScript。
-- 通信：前后端分离，REST API + SSE。
-- 测试：使用 Node 内置 node:test 测试运行器与 assert，不引入第三方测试框架。
-- 编码风格：与现有代码保持一致——小函数、职责单一、CommonJS 导出、中文注释与日志；服务层抛错使用 error.statusCode 约定，路由统一捕获返回 { error } 格式。
-- 大模型调用：使用 Node 内置 fetch，走 llmClient 封装，不引入 SDK。
+## 后端（团队已确定迁移到 Java）
+
+- 后端：Java 17 + Spring Boot 4.1.1 + Maven（pom.xml），包结构 com.smartlamp.*。
+- 数据库：MySQL + Spring Data JPA（ddl-auto: update）。
+- 通信：REST API（统一 ApiResponse{code,message,data} 包装，HTTP 恒 200，业务错误看 body.code，400=参数类错误、500=其他）+ MQTT（Spring Integration）。
+- 智能体（5号）：com.smartlamp.agent 包（知识库/检索/LLM 客户端）+ service 包内 AgentService，接口 POST /api/agent/ask。
+- LLM 调用：JDK 内置 java.net.http.HttpClient，零新增依赖；配置走 application.yml 的 llm: 段（LLM_API_KEY / LLM_BASE_URL / LLM_MODEL 环境变量占位）。
+- Java 编码风格：Lombok @Data；@Autowired 字段注入；中文注释；@Value 读取配置（kebab 键）；Jackson 3 包名 tools.jackson.*（非 com.fasterxml）。
+- 测试：JUnit 5 + AssertJ + Mockito（Spring Boot test starter 自带），纯单测不依赖 MySQL/MQTT。
+
+## 旧 Node 版（历史过渡）
+
+- backend/ 目录为 Node.js CommonJS 实现，保留于 wwn-agent 分支作对照与过渡，不再新增功能。
+
+## 前端（2号负责）
+
+- 原生 HTML/CSS/JS，无框架、无构建工具、不使用 React/TypeScript。
 
 当前不使用 ES modules、TypeScript、React。如未来团队正式决定迁移技术栈，需先更新本节内容，再让相关工具按新规范工作。
