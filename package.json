@@ -1,0 +1,16 @@
+{
+  "name": "smart-street-lights",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Smart street lights basic development framework",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "node backend/server.js",
+    "start": "node backend/server.js",
+    "backend": "node backend/server.js",
+    "check": "node --check backend/server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

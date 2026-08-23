@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="980" viewBox="0 0 1500 980">
+  <defs>
+    <style>
+      .bg { fill: #f5f7f4; }
+      .title { font: 700 34px "Microsoft YaHei", "Segoe UI", Arial, sans-serif; fill: #202624; }
+      .subtitle { font: 400 16px "Microsoft YaHei", "Segoe UI", Arial, sans-serif; fill: #66716c; }
+      .layer { fill: #ffffff; stroke: #dbe3dd; stroke-width: 2; rx: 16; filter: url(#shadow); }
+      .layerTitle { font: 700 20px "Microsoft YaHei", "Segoe UI", Arial, sans-serif; fill: #13776d; }
+      .box { fill: #fbfcfa; stroke: #cad8d2; stroke-width: 1.5; rx: 10; }
+      .box2 { fill: #e4f4f1; stroke: #94c9c0; stroke-width: 1.5; rx: 10; }
+      .box3 { fill: #fff0d2; stroke: #d3aa5c; stroke-width: 1.5; rx: 10; }
+      .box4 { fill: #eef1ff; stroke: #9ca9d6; stroke-width: 1.5; rx: 10; }
+      .text { font: 500 15px "Microsoft YaHei", "Segoe UI", Arial, sans-serif; fill: #202624; }
+      .small { font: 400 13px "Microsoft YaHei", "Segoe UI", Arial, sans-serif; fill: #66716c; }
+      .line { stroke: #879c96; stroke-width: 2.3; fill: none; marker-end: url(#arrow); }
+      .dash { stroke: #a7b9b3; stroke-width: 2.2; fill: none; stroke-dasharray: 7 6; marker-end: url(#arrowSoft); }
+    </style>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="125%">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#1e2a26" flood-opacity="0.10"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#879c96"/>
+    </marker>
+    <marker id="arrowSoft" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#a7b9b3"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" width="1500" height="980"/>
+  <text x="56" y="64" class="title">智慧路灯系统技术架构图</text>
+  <text x="58" y="94" class="subtitle">前端、后端服务、IoT 接入、AI/RAG、数据层与后续外部系统的技术关系</text>
+
+  <rect x="60" y="140" width="260" height="650" class="layer"/>
+  <text x="92" y="180" class="layerTitle">Frontend 前端层</text>
+  <rect x="92" y="215" width="196" height="56" class="box2"/>
+  <text x="190" y="249" text-anchor="middle" class="text">Dashboard 页面</text>
+  <rect x="92" y="296" width="196" height="56" class="box"/>
+  <text x="190" y="330" text-anchor="middle" class="text">Components 组件</text>
+  <rect x="92" y="377" width="196" height="56" class="box"/>
+  <text x="190" y="411" text-anchor="middle" class="text">API Client</text>
+  <rect x="92" y="458" width="196" height="56" class="box"/>
+  <text x="190" y="492" text-anchor="middle" class="text">Styles 样式</text>
+  <rect x="92" y="596" width="196" height="72" class="box3"/>
+  <text x="190" y="626" text-anchor="middle" class="text">浏览器</text>
+  <text x="190" y="650" text-anchor="middle" class="small">REST API / SSE</text>
+
+  <rect x="370" y="140" width="720" height="650" class="layer"/>
+  <text x="402" y="180" class="layerTitle">Backend 后端层</text>
+
+  <rect x="402" y="215" width="176" height="56" class="box2"/>
+  <text x="490" y="249" text-anchor="middle" class="text">server.js</text>
+
+  <rect x="620" y="215" width="196" height="56" class="box"/>
+  <text x="718" y="249" text-anchor="middle" class="text">Routes 路由层</text>
+
+  <rect x="852" y="215" width="196" height="56" class="box"/>
+  <text x="950" y="249" text-anchor="middle" class="text">Realtime / SSE</text>
+
+  <rect x="402" y="326" width="646" height="164" class="box"/>
+  <text x="430" y="360" class="layerTitle">Services 业务服务层</text>
+  <rect x="430" y="382" width="170" height="42" class="box2"/>
+  <text x="515" y="409" text-anchor="middle" class="small">deviceService</text>
+  <rect x="618" y="382" width="170" height="42" class="box2"/>
+  <text x="703" y="409" text-anchor="middle" class="small">telemetryService</text>
+  <rect x="806" y="382" width="170" height="42" class="box2"/>
+  <text x="891" y="409" text-anchor="middle" class="small">controlService</text>
+  <rect x="430" y="438" width="170" height="42" class="box2"/>
+  <text x="515" y="465" text-anchor="middle" class="small">alertService</text>
+  <rect x="618" y="438" width="170" height="42" class="box2"/>
+  <text x="703" y="465" text-anchor="middle" class="small">configService</text>
+  <rect x="806" y="438" width="170" height="42" class="box2"/>
+  <text x="891" y="465" text-anchor="middle" class="small">summaryService</text>
+
+  <rect x="402" y="538" width="196" height="86" class="box3"/>
+  <text x="500" y="575" text-anchor="middle" class="text">IoT 接入层</text>
+  <text x="500" y="599" text-anchor="middle" class="small">simulator / mqttTopics</text>
+
+  <rect x="640" y="538" width="196" height="86" class="box4"/>
+  <text x="738" y="575" text-anchor="middle" class="text">AI / RAG 层</text>
+  <text x="738" y="599" text-anchor="middle" class="small">agent / knowledgeBase</text>
+
+  <rect x="852" y="538" width="196" height="86" class="box"/>
+  <text x="950" y="575" text-anchor="middle" class="text">Models / Utils</text>
+  <text x="950" y="599" text-anchor="middle" class="small">数据模型与公共工具</text>
+
+  <rect x="520" y="680" width="380" height="72" class="box"/>
+  <text x="710" y="711" text-anchor="middle" class="text">Store 数据访问层</text>
+  <text x="710" y="735" text-anchor="middle" class="small">stateStore 当前读写本地数据，后续替换数据库</text>
+
+  <rect x="1140" y="140" width="300" height="650" class="layer"/>
+  <text x="1172" y="180" class="layerTitle">外部系统 / 后续接入</text>
+  <rect x="1172" y="226" width="236" height="64" class="box3"/>
+  <text x="1290" y="253" text-anchor="middle" class="text">MQTT Broker</text>
+  <text x="1290" y="274" text-anchor="middle" class="small">设备消息中转</text>
+  <rect x="1172" y="330" width="236" height="64" class="box3"/>
+  <text x="1290" y="357" text-anchor="middle" class="text">真实路灯 / 传感器</text>
+  <text x="1290" y="378" text-anchor="middle" class="small">光照、心跳、控制回执</text>
+  <rect x="1172" y="434" width="236" height="64" class="box4"/>
+  <text x="1290" y="461" text-anchor="middle" class="text">RAG / 大模型平台</text>
+  <text x="1290" y="482" text-anchor="middle" class="small">MaxKB / RAGFlow / API</text>
+  <rect x="1172" y="642" width="236" height="64" class="box"/>
+  <text x="1290" y="669" text-anchor="middle" class="text">数据库</text>
+  <text x="1290" y="690" text-anchor="middle" class="small">MySQL / PostgreSQL</text>
+
+  <rect x="562" y="842" width="296" height="64" class="box"/>
+  <text x="710" y="868" text-anchor="middle" class="text">data/app-state.json</text>
+  <text x="710" y="890" text-anchor="middle" class="small">第一阶段本地数据文件</text>
+
+  <path class="line" d="M288 405 L620 243"/>
+  <path class="line" d="M288 632 C340 632 328 243 402 243"/>
+  <path class="line" d="M816 243 L852 243"/>
+  <path class="line" d="M718 271 L718 326"/>
+  <path class="line" d="M725 490 L710 680"/>
+  <path class="line" d="M710 752 L710 842"/>
+  <path class="line" d="M500 538 C500 510 548 500 618 470"/>
+  <path class="line" d="M500 624 C500 655 558 670 650 680"/>
+  <path class="line" d="M738 538 C738 512 770 492 806 470"/>
+  <path class="line" d="M950 538 L950 490"/>
+  <path class="line" d="M852 243 C780 300 845 325 891 382"/>
+
+  <path class="dash" d="M598 581 C760 530 1015 290 1172 258"/>
+  <path class="dash" d="M1290 330 L1290 290"/>
+  <path class="dash" d="M836 581 C970 542 1050 478 1172 466"/>
+  <path class="dash" d="M900 716 C1010 704 1070 680 1172 674"/>
+</svg>
