@@ -21,6 +21,12 @@ public class GlobalExceptionHandler {
         return ApiResponse.error(400, "参数类型错误: " + ex.getName());
     }
 
+    // 处理业务参数类错误，例如 AI 问答空问题
+    @ExceptionHandler(BadRequestException.class)
+    public ApiResponse<Object> handleBadRequest(BadRequestException ex) {
+        return ApiResponse.error(400, ex.getMessage());
+    }
+
     // 处理其他所有异常
     @ExceptionHandler(Exception.class)
     public ApiResponse<Object> handleException(Exception ex) {
