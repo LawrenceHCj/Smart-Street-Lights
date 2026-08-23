@@ -1,2 +1,24 @@
+<<<<<<< HEAD
+# 编译输出
+target/
+out/
+
+# IDEA 配置
+.idea/
+*.iml
+
+# Maven 本地仓库
+.mvn/
+mvnw
+mvnw.cmd
+
+# 日志
+*.log
+
+# 系统文件
+.DS_Store
+Thumbs.db
+=======
 node_modules/
 .env
+>>>>>>> 1ff5d1f92df6ba85a2be49b800796f550f73a45e
