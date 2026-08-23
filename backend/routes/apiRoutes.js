@@ -64,7 +64,7 @@ function createApiRouter({ store, sseHub }) {
 
       if (method === "POST" && pathname === "/api/assistant/chat") {
         const body = await readBody(req);
-        return sendJson(res, 200, answerMaintenanceQuestion(body.question));
+        return sendJson(res, 200, await answerMaintenanceQuestion(body.question));
       }
 
       return sendJson(res, 404, { error: "api route not found" });
