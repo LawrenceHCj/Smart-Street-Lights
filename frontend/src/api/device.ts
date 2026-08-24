@@ -4,6 +4,8 @@ export interface DeviceVO {
   id: number
   code: string
   location: string
+  longitude: number | null
+  latitude: number | null
   status: 'ONLINE' | 'OFFLINE'
   latestLux: number | null
   lastSeen: number | null

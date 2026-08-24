@@ -8,4 +8,6 @@ public class AddDeviceRequest {
     private String name;
     private String location;   // 可选
     private String binding;
+    private Double longitude;
+    private Double latitude;
 }

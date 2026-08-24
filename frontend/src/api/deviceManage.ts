@@ -2,17 +2,18 @@ import request from './request'
 
 /**
  * 设备管理（功能清单 F-10）
- * 添加 / 解绑为"约定接口"，后端尚未实现（见 API.md），调用失败由页面降级处理。
- * 设备列表查询复用 device.ts 的 listDevices()（已实现）。
+ * 设备列表查询复用 device.ts 的 listDevices()。
  */
 
 export interface AddDevicePayload {
   code: string
   location: string
+  longitude: number
+  latitude: number
 }
 
 /** 添加设备 F-10：POST /api/devices */
-export function addDevice(payload: AddDevicePayload): Promise<null> {
+export function addDevice(payload: AddDevicePayload): Promise<import('./device').DeviceVO> {
   return request.post('/devices', payload, { silent: true })
 }
 

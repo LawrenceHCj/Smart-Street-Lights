@@ -29,6 +29,8 @@ public class DeviceService {
                         device.getId(),
                         device.getCode(),
                         device.getLocation(),
+                        device.getLongitude(),
+                        device.getLatitude(),
                         device.getStatus(),
                         device.getLatestLux(),
                         device.getLastSeen()
@@ -51,7 +53,7 @@ public class DeviceService {
     }
 
     // 添加设备
-    public Device addDevice(String code, String name, String location, String binding) {
+    public Device addDevice(String code, String name, String location, String binding, Double longitude, Double latitude) {
         // 检查设备编号是否已存在
         if (deviceRepository.findByCode(code).isPresent()) {
             return null;
@@ -60,6 +62,8 @@ public class DeviceService {
         device.setCode(code);
         device.setName(name == null || name.isBlank() ? code : name.trim());
         device.setLocation(location);
+        device.setLongitude(longitude);
+        device.setLatitude(latitude);
         device.setBinding(binding == null ? "" : binding.trim());
         device.setBound(true);
         device.setLampStatus("OFF");
@@ -70,18 +74,21 @@ public class DeviceService {
         return deviceRepository.save(device);
     }
 
-    public Device updateDevice(String code, String name, String location, String binding, Boolean bound) {
+    public Device updateDevice(String code, String name, String location, String binding, Boolean bound,
+                               Double longitude, Double latitude) {
         Device device = getDeviceByCode(code);
         if (device == null) return null;
         if (name != null) device.setName(name.trim());
         if (location != null) device.setLocation(location.trim());
         if (binding != null) device.setBinding(binding.trim());
         if (bound != null) device.setBound(bound);
+        if (longitude != null) device.setLongitude(longitude);
+        if (latitude != null) device.setLatitude(latitude);
         return deviceRepository.save(device);
     }
 
     public DeviceDTO toDTO(Device device) {
-        return new DeviceDTO(device.getId(), device.getCode(), device.getLocation(), device.getStatus(),
+        return new DeviceDTO(device.getId(), device.getCode(), device.getLocation(), device.getLongitude(), device.getLatitude(), device.getStatus(),
                 device.getLatestLux(), device.getLastSeen());
     }
 

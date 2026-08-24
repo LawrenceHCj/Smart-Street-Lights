@@ -64,7 +64,13 @@ public class DeviceController {
         if (request.getCode() == null || request.getCode().isBlank()) {
             return ApiResponse.error(400, "设备编号不能为空");
         }
-        Device device = deviceService.addDevice(request.getCode(), request.getName(), request.getLocation(), request.getBinding());
+        if (request.getLongitude() == null || request.getLatitude() == null
+                || request.getLongitude() < -180 || request.getLongitude() > 180
+                || request.getLatitude() < -90 || request.getLatitude() > 90) {
+            return ApiResponse.error(400, "请输入有效经纬度：经度 -180 至 180，纬度 -90 至 90");
+        }
+        Device device = deviceService.addDevice(request.getCode(), request.getName(), request.getLocation(), request.getBinding(),
+                request.getLongitude(), request.getLatitude());
         if (device == null) {
             return ApiResponse.error(400, "设备编号已存在");
         }
@@ -73,7 +79,12 @@ public class DeviceController {
 
     @PatchMapping("/{deviceId}")
     public ApiResponse<DeviceDTO> updateDevice(@PathVariable String deviceId, @RequestBody UpdateDeviceRequest request) {
-        Device device = deviceService.updateDevice(deviceId, request.getName(), request.getLocation(), request.getBinding(), request.getBound());
+        if ((request.getLongitude() != null && (request.getLongitude() < -180 || request.getLongitude() > 180))
+                || (request.getLatitude() != null && (request.getLatitude() < -90 || request.getLatitude() > 90))) {
+            return ApiResponse.error(400, "经纬度超出有效范围");
+        }
+        Device device = deviceService.updateDevice(deviceId, request.getName(), request.getLocation(), request.getBinding(), request.getBound(),
+                request.getLongitude(), request.getLatitude());
         if (device == null) return ApiResponse.error(404, "device not found");
         return ApiResponse.success(deviceService.toDTO(device));
     }

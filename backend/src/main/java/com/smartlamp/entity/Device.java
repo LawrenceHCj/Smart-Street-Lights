@@ -17,6 +17,8 @@ public class Device {
 
     private String name;
     private String location;
+    private Double longitude;
+    private Double latitude;
     private String binding;
     private Boolean bound = true;
     private String lampStatus = "OFF";

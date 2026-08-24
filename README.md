@@ -14,6 +14,27 @@
 
 Java Spring Boot 是唯一后端：设备、遥测、告警和联动配置均写入 MySQL，设备控制通过 MQTT 下发。
 
+### 0. 一键下载依赖并启动基础服务
+
+克隆仓库后，在项目根目录执行：
+
+```powershell
+.\scripts\install-dependencies.ps1
+```
+
+该脚本会通过 `npm ci` 安装前端锁定依赖、通过 Maven 下载后端依赖，并用 `docker compose` 拉取和启动 MySQL（3307）与 MQTT（1883）。如果本机的 MySQL 和 MQTT 已经启动，可跳过容器部分：
+
+```powershell
+.\scripts\install-dependencies.ps1 -SkipInfrastructure
+```
+
+基础服务也可以单独管理：
+
+```powershell
+docker compose up -d
+docker compose down
+```
+
 ### 1. 启动后端
 
 在项目根目录执行：
@@ -70,6 +91,8 @@ http://localhost:5173
 - MySQL 用户名：`root`
 - MySQL 密码：`123456`
 - 可选 MQTT Broker：`127.0.0.1:1883`
+
+如需启用外部大模型，复制 `backend/.env.example` 为 `backend/.env`，填写 `llm.api-key`。模板默认配置为 DeepSeek V4 Flash；`.env` 不会提交到 Git。
 
 配置文件：
 

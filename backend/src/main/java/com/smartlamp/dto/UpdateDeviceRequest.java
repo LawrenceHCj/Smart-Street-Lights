@@ -8,4 +8,6 @@ public class UpdateDeviceRequest {
     private String location;
     private String binding;
     private Boolean bound;
+    private Double longitude;
+    private Double latitude;
 }
