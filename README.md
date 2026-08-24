@@ -16,16 +16,29 @@ Java Spring Boot 是唯一后端：设备、遥测、告警和联动配置均写
 
 ### 0. 一键下载依赖并启动基础服务
 
-克隆仓库后，在项目根目录执行：
+克隆仓库后，在项目根目录执行。Windows PowerShell：
 
 ```powershell
 .\scripts\install-dependencies.ps1
+```
+
+Linux/macOS Bash：
+
+```bash
+chmod +x ./scripts/install-dependencies.sh
+./scripts/install-dependencies.sh
 ```
 
 该脚本会通过 `npm ci` 安装前端锁定依赖、通过 Maven 下载后端依赖，并用 `docker compose` 拉取和启动 MySQL（3307）与 MQTT（1883）。如果本机的 MySQL 和 MQTT 已经启动，可跳过容器部分：
 
 ```powershell
 .\scripts\install-dependencies.ps1 -SkipInfrastructure
+```
+
+Linux/macOS 对应命令：
+
+```bash
+./scripts/install-dependencies.sh --skip-infrastructure
 ```
 
 基础服务也可以单独管理：
