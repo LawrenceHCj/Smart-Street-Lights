@@ -51,6 +51,7 @@ async function doLogin() {
   try {
     const r = await login(username.value, password.value)
     localStorage.setItem('token', r.token)
+    localStorage.setItem('username', r.username)
     router.push('/dashboard')
   } catch {
     // 登录失败提示已由请求拦截器统一弹出

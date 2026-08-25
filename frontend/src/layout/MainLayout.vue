@@ -67,8 +67,8 @@
               <div class="notice-foot" @click="noticeOpen = false; router.push('/alarms')">查看全部告警 ›</div>
             </div>
           </el-popover>
-          <div class="user-avatar">A</div>
-          <span class="user-name">admin</span>
+          <div class="user-avatar">{{ currentUser[0]?.toUpperCase() ?? 'U' }}</div>
+          <span class="user-name">{{ currentUser }}</span>
           <el-button text class="logout" @click="logout">
             <el-icon><SwitchButton /></el-icon>
           </el-button>
@@ -102,6 +102,9 @@ import {
 
 const route = useRoute()
 const router = useRouter()
+
+// 当前登录用户：登录时写入 localStorage，退出时清理
+const currentUser = localStorage.getItem('username') || '用户'
 
 const nav = [
   { path: '/dashboard', label: '运行概览', icon: DataBoard },
@@ -152,6 +155,7 @@ onUnmounted(() => {
 
 function logout() {
   localStorage.removeItem('token')
+  localStorage.removeItem('username')
   router.push('/login')
 }
 </script>
