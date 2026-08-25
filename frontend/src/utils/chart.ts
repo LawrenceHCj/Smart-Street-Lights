@@ -2,15 +2,22 @@ import type { EChartsOption } from 'echarts'
 
 /** 图表深色令牌（与 index.css 的暖调炭黑 / 路灯金对齐） */
 export const chartColors = {
-  text: '#a3a19a',
-  muted: '#87857d',
-  axis: 'rgba(255, 255, 255, 0.1)',
-  split: 'rgba(255, 255, 255, 0.06)',
-  accent: '#dfb34f',
-  accentBright: '#efc878',
+  text: '#a8bad2',
+  muted: '#7288a4',
+  axis: 'rgba(137, 170, 207, 0.2)',
+  split: 'rgba(137, 170, 207, 0.1)',
+  accent: '#f1b94e',
+  accentBright: '#ffd47b',
 }
 
 const pad = (n: number) => String(n).padStart(2, '0')
+
+/** 两个时间戳是否属于同一自然日 */
+function sameCalendarDay(a: number, b: number): boolean {
+  const x = new Date(a)
+  const y = new Date(b)
+  return x.getFullYear() === y.getFullYear() && x.getMonth() === y.getMonth() && x.getDate() === y.getDate()
+}
 
 /** 时间轴刻度标签：跨天时带日期，否则只显示 HH:mm */
 function axisLabel(ts: number): string {
@@ -23,18 +30,19 @@ function axisLabel(ts: number): string {
 
 /** 光照趋势折线：暖调炭黑网格 + 金色折线 + 渐变面积。times 为毫秒时间戳。 */
 export function luxLineOption(times: number[], values: number[]): EChartsOption {
+  const singleDay = times.length > 1 && times.every((t) => sameCalendarDay(t, times[0]))
   return {
     grid: { left: 48, right: 20, top: 30, bottom: 36 },
     tooltip: {
       trigger: 'axis',
-      backgroundColor: '#19191e',
-      borderColor: 'rgba(255, 255, 255, 0.1)',
+      backgroundColor: '#102338',
+      borderColor: 'rgba(137, 170, 207, 0.22)',
       borderWidth: 1,
       padding: [10, 14],
-      textStyle: { color: '#f2f1ed', fontSize: 12 },
+      textStyle: { color: '#edf5ff', fontSize: 12 },
       axisPointer: {
         lineStyle: { color: 'rgba(255, 255, 255, 0.18)' },
-        shadowStyle: { color: 'rgba(223, 179, 79, 0.06)' },
+        shadowStyle: { color: 'rgba(241, 185, 78, 0.06)' },
       },
       formatter: (params: unknown) => {
         const items = params as Array<{ axisValue: number; value: number }>
@@ -42,7 +50,7 @@ export function luxLineOption(times: number[], values: number[]): EChartsOption 
         const d = new Date(items[0].axisValue)
         const stamp = `${pad(d.getFullYear())}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
         const lux = items[0].value
-        return `<div style="font-family:ui-monospace,monospace;color:#87857d;font-size:11px;margin-bottom:4px">${stamp}</div><div style="color:#efc878;font-weight:600">${lux} Lux</div>`
+        return `<div style="font-family:ui-monospace,monospace;color:#7288a4;font-size:11px;margin-bottom:4px">${stamp}</div><div style="color:#ffd47b;font-weight:600">${lux} Lux</div>`
       },
     },
     xAxis: {
@@ -53,7 +61,7 @@ export function luxLineOption(times: number[], values: number[]): EChartsOption 
       axisLabel: {
         color: chartColors.muted,
         fontSize: 11,
-        formatter: (value: number) => axisLabel(value),
+        formatter: (value: number) => (singleDay ? `${pad(new Date(value).getHours())}:${pad(new Date(value).getMinutes())}` : axisLabel(value)),
         hideOverlap: true,
       },
       axisTick: { show: false },
@@ -75,7 +83,7 @@ export function luxLineOption(times: number[], values: number[]): EChartsOption 
         lineStyle: {
           color: chartColors.accent,
           width: 2,
-          shadowColor: 'rgba(223, 179, 79, 0.35)',
+          shadowColor: 'rgba(241, 185, 78, 0.35)',
           shadowBlur: 8,
         },
         itemStyle: { color: chartColors.accent },
@@ -87,7 +95,7 @@ export function luxLineOption(times: number[], values: number[]): EChartsOption 
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: 'rgba(223, 179, 79, 0.24)' },
+              { offset: 0, color: 'rgba(241, 185, 78, 0.24)' },
               { offset: 1, color: 'rgba(223, 179, 79, 0)' },
             ],
           },

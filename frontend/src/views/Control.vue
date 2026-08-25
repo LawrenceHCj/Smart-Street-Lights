@@ -184,6 +184,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.control::before { content: ''; position: fixed; z-index: -1; width: 560px; height: 560px; right: -230px; bottom: -180px; border: 1px solid rgba(241,185,78,.1); border-radius: 50%; box-shadow: 0 0 0 80px rgba(241,185,78,.018), 0 0 0 160px rgba(241,185,78,.012); pointer-events: none; }
 .control {
   display: flex;
   flex-direction: column;
@@ -198,7 +199,7 @@ onMounted(() => {
 }
 .page-title {
   margin: 0;
-  font-size: 20px;
+  font-size: 25px;
   font-weight: 650;
   letter-spacing: 0.01em;
   color: var(--text-primary);
@@ -215,18 +216,22 @@ onMounted(() => {
   font-size: 12.5px;
   color: var(--text-secondary);
 }
+.panel { position: relative; overflow: hidden; border-radius: 8px; }
+.panel::before { content: ''; position: absolute; inset: 0 auto auto 0; width: 3px; height: 100%; background: linear-gradient(var(--accent), transparent 45%); opacity: .85; }
+.panel-head { min-height: 64px; background: linear-gradient(90deg, rgba(97, 73, 25, .18), transparent 45%); }
 
 .cfg {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 0;
+  padding-block: 6px;
 }
 .cfg-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  padding: 14px 0;
+  padding: 18px 0;
 }
 .cfg-row + .cfg-row {
   border-top: 1px solid var(--border-subtle);
@@ -239,6 +244,7 @@ onMounted(() => {
   font-weight: 600;
   color: var(--text-primary);
 }
+.cfg-title::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent-glow); vertical-align: 1px; }
 .cfg-desc {
   margin-top: 3px;
   font-size: 12.5px;
@@ -252,12 +258,12 @@ onMounted(() => {
 .cfg-actions {
   display: flex;
   justify-content: flex-end;
-  padding-top: 14px;
+  padding-top: 16px;
   border-top: 1px solid var(--border-subtle);
 }
 
 .table-wrap {
-  padding: 6px 16px 16px;
+  padding: 8px 18px 18px;
 }
 .device-cell {
   display: flex;
@@ -273,7 +279,7 @@ onMounted(() => {
   flex: none;
 }
 .device-avatar.on {
-  background: var(--accent-dim);
+  background: linear-gradient(135deg, rgba(241,185,78,.25), var(--accent-dim));
   color: var(--accent-bright);
 }
 .device-avatar.off {
@@ -288,6 +294,7 @@ onMounted(() => {
   color: var(--text-primary);
   font-weight: 550;
 }
+.device-cell::after { content: '可控制'; margin-left: 2px; padding: 1px 5px; border: 1px solid rgba(241,185,78,.28); border-radius: 3px; color: var(--accent-bright); font-size: 9px; letter-spacing: .04em; }
 .loc {
   color: var(--text-secondary);
 }

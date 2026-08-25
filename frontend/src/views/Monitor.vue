@@ -229,6 +229,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.monitor::before { content: ''; position: fixed; z-index: -1; width: 520px; height: 520px; right: -200px; top: 70px; border: 1px solid rgba(79, 138, 220, .12); border-radius: 50%; box-shadow: 0 0 0 68px rgba(79, 138, 220, .025), 0 0 0 136px rgba(79, 138, 220, .018); pointer-events: none; }
 .monitor {
   display: flex;
   flex-direction: column;
@@ -243,7 +244,7 @@ onUnmounted(() => {
 }
 .page-title {
   margin: 0;
-  font-size: 20px;
+  font-size: 25px;
   font-weight: 650;
   letter-spacing: 0.01em;
   color: var(--text-primary);
@@ -260,6 +261,10 @@ onUnmounted(() => {
   font-size: 12.5px;
   color: var(--text-secondary);
 }
+.panel { position: relative; overflow: hidden; border-radius: 8px; }
+.panel::before { content: ''; position: absolute; left: 0; top: 0; width: 100%; height: 2px; background: linear-gradient(90deg, #3d7ee9, transparent 38%); opacity: .75; }
+.panel-head { min-height: 64px; background: linear-gradient(90deg, rgba(32, 70, 111, .18), transparent 46%); }
+.panel-title { letter-spacing: .02em; }
 
 .search-meta {
   gap: 12px;
@@ -272,7 +277,7 @@ onUnmounted(() => {
 }
 
 .table-wrap {
-  padding: 6px 16px 16px;
+  padding: 8px 18px 18px;
 }
 
 .device-cell {
@@ -289,8 +294,8 @@ onUnmounted(() => {
   flex: none;
 }
 .device-avatar.on {
-  background: var(--accent-dim);
-  color: var(--accent-bright);
+  background: linear-gradient(135deg, rgba(78, 136, 242, .25), var(--accent-dim));
+  color: #a9c9ff;
 }
 .device-avatar.off {
   background: rgba(226, 98, 90, 0.12);
@@ -304,6 +309,7 @@ onUnmounted(() => {
   color: var(--text-primary);
   font-weight: 550;
 }
+.device-cell::after { content: '实时'; margin-left: 2px; padding: 1px 5px; border: 1px solid rgba(66, 210, 139, .28); border-radius: 3px; color: var(--ok); font-size: 9px; letter-spacing: .04em; }
 .loc {
   color: var(--text-secondary);
 }
@@ -343,7 +349,8 @@ onUnmounted(() => {
   padding: 5px 12px;
   border-radius: 9px;
   background: var(--accent-dim);
-  border: 1px solid rgba(223, 179, 79, 0.22);
+  border: 1px solid rgba(241, 185, 78, 0.28);
+  box-shadow: inset 0 0 22px rgba(241, 185, 78, .05);
 }
 .live-label {
   font-size: 11.5px;
@@ -392,7 +399,7 @@ onUnmounted(() => {
 }
 
 .chart {
-  height: 320px;
+  height: 340px;
 }
 
 @media (max-width: 700px) {

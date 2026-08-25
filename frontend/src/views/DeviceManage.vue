@@ -76,14 +76,23 @@
       </div>
     </div>
 
-    <el-dialog v-model="addVisible" title="添加路灯设备" width="420">
-      <el-form label-position="top" @submit.prevent>
-        <el-form-item label="设备编号">
+    <el-dialog v-model="addVisible" title="添加路灯设备" width="420px" class="device-dialog">
+      <el-form label-position="top" @submit.prevent="submitAdd">
+        <el-form-item label="设备编号" required>
           <el-input v-model="form.code" placeholder="如 SL-020" :prefix-icon="ReadingLamp" />
         </el-form-item>
         <el-form-item label="安装位置">
           <el-input v-model="form.location" placeholder="如 建设路 8 号" />
         </el-form-item>
+        <div class="coordinate-grid" aria-describedby="coordinate-help">
+          <el-form-item label="经度" required>
+            <el-input-number v-model="form.longitude" :min="-180" :max="180" :precision="6" :step="0.000001" controls-position="right" placeholder="如 106.298038" />
+          </el-form-item>
+          <el-form-item label="纬度" required>
+            <el-input-number v-model="form.latitude" :min="-90" :max="90" :precision="6" :step="0.000001" controls-position="right" placeholder="如 29.593390" />
+          </el-form-item>
+        </div>
+        <p id="coordinate-help" class="coordinate-help">必填。请填写高德地图坐标拾取器给出的 GCJ-02 经度和纬度，设备将按此坐标显示在地图上。</p>
       </el-form>
       <template #footer>
         <el-button @click="addVisible = false">取消</el-button>
@@ -107,7 +116,7 @@ const devices = ref<DeviceVO[]>([])
 const ready = ref(true)
 const addVisible = ref(false)
 const adding = ref(false)
-const form = reactive({ code: '', location: '' })
+const form = reactive<{ code: string; location: string; longitude?: number; latitude?: number }>({ code: '', location: '' })
 
 const pad = (n: number) => String(n).padStart(2, '0')
 function time(ts: number | null) {
@@ -127,6 +136,8 @@ async function load() {
 function openAdd() {
   form.code = ''
   form.location = ''
+  form.longitude = undefined
+  form.latitude = undefined
   addVisible.value = true
 }
 
@@ -135,9 +146,13 @@ async function submitAdd() {
     ElMessage.warning('请输入设备编号')
     return
   }
+  if (!Number.isFinite(form.longitude) || !Number.isFinite(form.latitude)) {
+    ElMessage.warning('请输入设备安装点的经度和纬度')
+    return
+  }
   adding.value = true
   try {
-    const r = await probe(addDevice({ code: form.code.trim(), location: form.location.trim() }), null)
+    const r = await probe(addDevice({ code: form.code.trim(), location: form.location.trim(), longitude: form.longitude!, latitude: form.latitude! }), null)
     if (r.ready) {
       addVisible.value = false
       ElMessage.success(`设备 ${form.code.trim()} 已添加`)
@@ -257,11 +272,29 @@ onMounted(load)
   color: var(--text-muted);
   font-size: 12.5px;
 }
+.coordinate-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.coordinate-grid :deep(.el-input-number) {
+  width: 100%;
+}
+.coordinate-help {
+  margin: -4px 0 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
 
 @media (max-width: 560px) {
   .page-intro {
     flex-direction: column;
     align-items: flex-start;
+  }
+  .coordinate-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
   }
 }
 </style>

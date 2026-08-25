@@ -1,427 +1,47 @@
 <template>
-  <div class="dash">
-    <div class="page-intro">
-      <div>
-        <h2 class="page-title">运行概览</h2>
-        <p class="page-desc">全网设备状态与平均照度，数据实时刷新</p>
-      </div>
-      <div class="refresh">
-        <span class="status-dot idle"></span>
-        <span class="num">5s</span> 自动刷新
-      </div>
-    </div>
-
-    <div class="stats">
-      <div
-        v-for="s in statCards"
-        :key="s.key"
-        class="stat-card"
-        :class="{ accent: s.key === 'avg' }"
-      >
-        <div class="stat-label">
-          <el-icon class="label-icon"><component :is="s.icon" /></el-icon>
-          {{ s.label }}
-        </div>
-        <div class="stat-value">
-          {{ s.value }}<span v-if="s.unit" class="unit">{{ s.unit }}</span>
-        </div>
-        <div class="stat-sub">{{ s.sub }}</div>
-      </div>
-    </div>
-
-    <div class="dash-grid">
-      <!-- F-03 / F-04 光照趋势 -->
-      <div class="panel">
-        <div class="panel-head trend-head">
-          <div class="panel-title">光照趋势 · {{ currentCode }}</div>
-          <div class="trend-controls">
-            <el-select v-model="currentCode" size="small" class="dev-select" @change="onChangeDevice">
-              <el-option
-                v-for="d in devices"
-                :key="d.code"
-                :label="`${d.code} · ${d.location}`"
-                :value="d.code"
-              />
-            </el-select>
-            <div class="range-switch">
-              <button
-                v-for="r in ranges"
-                :key="r.value"
-                :class="{ active: range === r.value }"
-                @click="setRange(r.value)"
-              >
-                {{ r.label }}
-              </button>
-            </div>
-          </div>
-        </div>
-        <div class="panel-body">
-          <div ref="chartRef" class="chart"></div>
-        </div>
-      </div>
-
-      <!-- F-02 / F-04 设备在线状态 -->
-      <div class="panel">
-        <div class="panel-head">
-          <div class="panel-title">设备在线状态</div>
-          <div class="panel-meta">
-            <router-link to="/monitor" class="more-link">查看全部 →</router-link>
-          </div>
-        </div>
-        <div class="panel-body dev-list">
-          <div class="dev-summary">
-            <div class="dev-summary-bar">
-              <div class="bar-online" :style="{ width: onlineRate + '%' }"></div>
-            </div>
-            <div class="dev-summary-text">
-              <span><i class="dot on"></i>在线 {{ onlineCount }}</span>
-              <span><i class="dot off"></i>离线 {{ offlineCount }}</span>
-              <span class="rate num">{{ onlineRate }}%</span>
-            </div>
-          </div>
-          <div v-for="d in devices.slice(0, 8)" :key="d.code" class="dev-row">
-            <span class="status-dot" :class="d.status === 'ONLINE' ? 'online' : 'offline'"></span>
-            <span class="dev-code num">{{ d.code }}</span>
-            <span class="dev-loc">{{ d.location }}</span>
-            <span class="dev-lux num">{{ d.latestLux == null ? '—' : d.latestLux }}</span>
-          </div>
-          <div v-if="!devices.length" class="dev-empty">暂无设备</div>
-        </div>
-      </div>
-    </div>
+  <div class="command-center">
+    <div class="dashboard-title"><div><h1>运行概览</h1><p>全网照明设备状态与环境照度实时汇总</p></div><div class="refresh-state"><span class="status-dot online"></span><span class="num">5s</span> 自动刷新</div></div>
+    <section class="command-grid">
+      <aside class="metrics-rail"><article v-for="s in statCards" :key="s.key" class="metric" :class="s.tone"><div class="metric-icon"><el-icon><component :is="s.icon" /></el-icon></div><div><p>{{ s.label }}</p><strong class="num">{{ s.value }}<small v-if="s.unit">{{ s.unit }}</small></strong><span>{{ s.sub }}</span></div></article></aside>
+      <section class="map-panel"><div ref="mapRef" class="amap-canvas" aria-label="校园路灯分布地图"></div><div v-if="mapLoading" class="map-state">正在加载校园地图…</div><div v-else-if="mapError" class="map-state map-error"><span>{{ mapError }}</span><button @click="initMap">重新加载</button></div><div class="map-heading"><span>校园路灯分布</span><small>点击点位查看设备详情</small></div><div class="map-tools"><button aria-label="回到校园中心" @click="resetMap">◎</button><button aria-label="放大地图" @click="zoomMap(1)">＋</button><button aria-label="缩小地图" @click="zoomMap(-1)">−</button></div><div class="map-legend"><button v-for="item in mapFilters" :key="item.key" :class="{ selected: mapFilter === item.key }" @click="mapFilter = item.key"><i :class="item.key"></i>{{ item.label }} <b class="num">{{ item.count }}</b></button></div></section>
+    </section>
+    <section class="lower-grid">
+      <section class="panel trend-panel"><div class="panel-head trend-head"><div><div class="panel-title">光照趋势</div><div class="panel-caption">{{ trendCaption }}</div></div><div class="trend-actions"><el-select v-model="currentCode" size="small" class="device-select" @change="onChangeDevice"><el-option v-for="d in devices" :key="d.code" :label="d.code" :value="d.code" /></el-select><div class="range-switch"><button v-for="r in ranges" :key="r.value" :class="{ active: range === r.value }" @click="setRange(r.value)">{{ r.label }}</button></div></div></div><div class="day-strip"><button v-for="opt in dayOptions" :key="opt.value" class="day-chip" :class="{ active: selectedDay === opt.value }" @click="selectDay(opt.value)">{{ opt.label }}</button></div><div class="panel-body chart-wrap"><div ref="chartRef" class="chart"></div></div></section>
+      <section class="panel device-panel"><div class="panel-head"><div><div class="panel-title">设备在线状态</div><div class="panel-caption">最近一次设备上报</div></div><router-link to="/monitor" class="more-link">查看全部 ›</router-link></div><div class="device-table"><div class="device-head"><span>设备名称</span><span>位置</span><span>照度</span><span>状态</span></div><div v-for="d in devices.slice(0, 6)" :key="d.code" class="device-row"><span class="device-name"><i class="lamp-dot" :class="d.status === 'ONLINE' ? 'online' : 'offline'"></i><b class="num">{{ d.code }}</b></span><span class="location">{{ d.location }}</span><span class="lux num">{{ d.latestLux ?? '—' }}</span><span class="device-status" :class="d.status === 'ONLINE' ? 'online' : 'offline'">{{ d.status === 'ONLINE' ? '在线' : '离线' }}</span></div><div v-if="!devices.length" class="empty">暂无接入设备</div></div></section>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import * as echarts from 'echarts'
-import { Monitor, CircleCheck, CircleClose, Sunny } from '@element-plus/icons-vue'
-import { getOverview, getHistory, listDevices } from '../api/device'
+import { CircleCheck, CircleClose, Monitor, Sunny } from '@element-plus/icons-vue'
+import { getHistory, getOverview, listDevices } from '../api/device'
 import type { DashboardOverview, DeviceVO, LightPoint } from '../api/device'
 import { luxLineOption } from '../utils/chart'
-
-const overview = ref<DashboardOverview>({ totalDevices: 0, onlineCount: 0, offlineCount: 0, avgLux: 0 })
-const devices = ref<DeviceVO[]>([])
-const currentCode = ref('SL-001')
-const chartRef = ref<HTMLDivElement>()
-let chart: echarts.ECharts | null = null
-let timer: ReturnType<typeof setInterval> | null = null
-let refreshing = false
-
-type RangeKey = '24h' | '7d' | '30d'
-const range = ref<RangeKey>('24h')
-const ranges: Array<{ value: RangeKey; label: string }> = [
-  { value: '24h', label: '24 小时' },
-  { value: '7d', label: '近 7 天' },
-  { value: '30d', label: '近 30 天' },
-]
-const rangeMs = computed(() => {
-  const h = 3600_000
-  return range.value === '24h' ? 24 * h : range.value === '7d' ? 7 * 24 * h : 30 * 24 * h
-})
-
-const onlineCount = computed(() => devices.value.filter((d) => d.status === 'ONLINE').length)
-const offlineCount = computed(() => devices.value.filter((d) => d.status === 'OFFLINE').length)
-const onlineRate = computed(() =>
-  devices.value.length ? Math.round((onlineCount.value / devices.value.length) * 100) : 0,
-)
-
-interface StatCard {
-  key: string
-  label: string
-  icon: unknown
-  value: number
-  unit?: string
-  sub: string
-}
-
-const statCards = computed<StatCard[]>(() => {
-  const o = overview.value
-  const rate = o.totalDevices ? Math.round((o.onlineCount / o.totalDevices) * 100) : 0
-  return [
-    { key: 'total', label: '接入设备', icon: Monitor, value: o.totalDevices, sub: '路灯设备总数' },
-    { key: 'online', label: '在线设备', icon: CircleCheck, value: o.onlineCount, sub: `在线率 ${rate}%` },
-    {
-      key: 'offline',
-      label: '离线设备',
-      icon: CircleClose,
-      value: o.offlineCount,
-      sub: o.offlineCount ? '需人工排查' : '全部在线',
-    },
-    { key: 'avg', label: '平均照度', icon: Sunny, value: Math.round(o.avgLux), unit: 'Lux', sub: '当前全网均值' },
-  ]
-})
-
-// 轮询 / 用户操作都走这里；immediate=true 时即使上一次请求在途也立即发起（用户主动切换设备/时间段）
-async function refresh(immediate = false) {
-  if (refreshing && !immediate) return
-  refreshing = true
-  const code = currentCode.value
-  const now = Date.now()
-  try {
-    const [o, devs, hist] = await Promise.all([
-      getOverview(),
-      listDevices(),
-      getHistory(code, now - rangeMs.value, now),
-    ])
-    overview.value = o
-    devices.value = devs
-    // 选中设备已不存在时回退到第一台；请求期间切换了设备则丢弃本次图表结果
-    if (devs.length && !devs.some((d) => d.code === currentCode.value)) {
-      currentCode.value = devs[0].code
-    }
-    if (code === currentCode.value) renderChart(hist.points)
-  } catch {
-    // 拦截器已统一提示
-  } finally {
-    refreshing = false
-  }
-}
-
-function setRange(v: RangeKey) {
-  range.value = v
-  refresh(true)
-}
-
-function onChangeDevice() {
-  refresh(true)
-}
-
-function renderChart(points: LightPoint[]) {
-  if (!chartRef.value) return
-  if (!chart) chart = echarts.init(chartRef.value)
-  chart.setOption(luxLineOption(points.map((p) => p.ts), points.map((p) => p.lux)))
-}
-
-function resize() {
-  chart?.resize()
-}
-
-onMounted(() => {
-  refresh(true)
-  timer = setInterval(refresh, 5000)
-  window.addEventListener('resize', resize)
-})
-onUnmounted(() => {
-  if (timer) clearInterval(timer)
-  window.removeEventListener('resize', resize)
-  chart?.dispose()
-  chart = null
-})
+import { loadAMap } from '../utils/amap'
+const overview = ref<DashboardOverview>({ totalDevices: 0, onlineCount: 0, offlineCount: 0, avgLux: 0 }); const devices = ref<DeviceVO[]>([]); const currentCode = ref('SL-001'); const range = ref<'24h' | '7d' | '30d'>('24h'); const mapFilter = ref('online'); const chartRef = ref<HTMLDivElement>(); const mapRef = ref<HTMLDivElement>(); const mapLoading = ref(true); const mapError = ref(''); let chart: echarts.ECharts | null = null; let map: any = null; let amap: any = null; let markers: any[] = []; let infoWindow: any = null; let timer: ReturnType<typeof setInterval> | null = null; let refreshing = false
+const ranges = [{ value: '24h', label: '24 小时' }, { value: '7d', label: '近 7 天' }, { value: '30d', label: '近 30 天' }] as const
+const pad = (n: number) => String(n).padStart(2, '0'); const selectedDay = ref<string | null>(null)
+const onlineCount = computed(() => devices.value.filter(d => d.status === 'ONLINE').length); const offlineCount = computed(() => devices.value.filter(d => d.status === 'OFFLINE').length); const onlineRate = computed(() => devices.value.length ? Math.round(onlineCount.value / devices.value.length * 100) : 0)
+const mapFilters = computed(() => [{ key: 'online', label: '在线', count: onlineCount.value }, { key: 'offline', label: '离线', count: offlineCount.value }, { key: 'all', label: '全部', count: devices.value.length }])
+const statCards = computed(() => [{ key: 'total', label: '接入设备', value: overview.value.totalDevices, sub: '全网设备总数', icon: Monitor, tone: 'blue' }, { key: 'online', label: '在线设备', value: overview.value.onlineCount, sub: `在线率 ${onlineRate.value}%`, icon: CircleCheck, tone: 'green' }, { key: 'offline', label: '离线设备', value: overview.value.offlineCount, sub: overview.value.offlineCount ? '需要人工排查' : '全部运行正常', icon: CircleClose, tone: 'red' }, { key: 'avg', label: '平均照度', value: Math.round(overview.value.avgLux), unit: ' lx', sub: '当前全网均值', icon: Sunny, tone: 'amber' }])
+const rangeMs = computed(() => ({ '24h': 86400000, '7d': 604800000, '30d': 2592000000 })[range.value])
+const dayOptions = computed(() => { const out: { value: string; label: string }[] = []; for (let i = 0; i < 7; i++) { const d = new Date(); d.setDate(d.getDate() - i); d.setHours(0, 0, 0, 0); const value = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; out.push({ value, label: i === 0 ? '今天' : `${pad(d.getMonth() + 1)}-${pad(d.getDate())}` }) } return out })
+const trendCaption = computed(() => { if (selectedDay.value) { const d = new Date(`${selectedDay.value}T00:00:00`); return `${currentCode.value} · ${pad(d.getMonth() + 1)}-${pad(d.getDate())} 全天光照（Lux）` } return `${currentCode.value} · 环境照度（Lux）` })
+async function refresh(immediate = false) { if (refreshing && !immediate) return; refreshing = true; const code = currentCode.value; const now = Date.now(); let start: number, end: number; if (selectedDay.value) { const [y, m, d] = selectedDay.value.split('-').map(Number); start = new Date(y, m - 1, d).getTime(); end = start + 86400000 } else { end = now; start = now - rangeMs.value } try { const [summary, list, history] = await Promise.all([getOverview(), listDevices(), getHistory(code, start, end)]); overview.value = summary; devices.value = list; if (list.length && !list.some(d => d.code === currentCode.value)) currentCode.value = list[0].code; if (code === currentCode.value) renderChart(history.points) } finally { refreshing = false } }
+function renderChart(points: LightPoint[]) { if (!chartRef.value) return; if (!chart) chart = echarts.init(chartRef.value); chart.setOption(luxLineOption(points.map(p => p.ts), points.map(p => p.lux))) }
+function campusCenter() { const values = (import.meta.env.VITE_AMAP_CENTER || '116.397428,39.90923').split(',').map(Number); return values.length === 2 && values.every(Number.isFinite) ? values : [116.397428, 39.90923] }
+function devicePosition(device: DeviceVO, index: number) { if (device.longitude !== null && device.latitude !== null) return [device.longitude, device.latitude]; const [lng, lat] = campusCenter(); const offsets = [[0, 0], [.0015, .0007], [-.0012, .001], [.0008, -.0012], [-.0016, -.0009], [.002, -.0016]]; const [x, y] = offsets[index % offsets.length]; return [lng + x, lat + y] }
+function updateMarkers() { if (!map || !amap) return; map.remove(markers); const shown = devices.value.filter(d => mapFilter.value === 'all' || (mapFilter.value === 'online' ? d.status === 'ONLINE' : d.status === 'OFFLINE')); markers = shown.map((device) => { const index = devices.value.findIndex(d => d.code === device.code); const online = device.status === 'ONLINE'; const marker = new amap.Marker({ position: devicePosition(device, index), offset: new amap.Pixel(-13, -13), content: `<span class="lamp-marker ${online ? 'is-online' : 'is-offline'}" title="${device.code}"></span>` }); marker.on('click', () => { currentCode.value = device.code; onChangeDevice(); const lux = device.latestLux === null ? '暂无' : `${device.latestLux} lx`; infoWindow.setContent(`<div class="map-info"><strong>${device.code}</strong><span>${device.location}</span><span>${online ? '在线' : '离线'} · ${lux}</span></div>`); infoWindow.open(map, marker.getPosition()) }); return marker }); map.add(markers) }
+async function initMap() { mapError.value = ''; mapLoading.value = true; try { amap = await loadAMap(); if (!mapRef.value) return; const center = campusCenter(); if (map) map.destroy(); map = new amap.Map(mapRef.value, { viewMode: '2D', zoom: 16, center, mapStyle: 'amap://styles/normal' }); infoWindow = new amap.InfoWindow({ offset: new amap.Pixel(0, -22), closeWhenClickMap: true }); updateMarkers() } catch (error) { mapError.value = error instanceof Error ? `${error.message}。请在 frontend/.env 中配置高德 Web 端密钥。` : '地图加载失败。' } finally { mapLoading.value = false } }
+function resetMap() { map?.setZoomAndCenter(16, campusCenter()) }; function zoomMap(delta: number) { if (map) map.setZoom(map.getZoom() + delta) }
+function setRange(value: '24h' | '7d' | '30d') { range.value = value; selectedDay.value = null; refresh(true) }; function selectDay(value: string) { selectedDay.value = value; refresh(true) }; function onChangeDevice() { refresh(true) }; function resize() { chart?.resize() }
+watch([devices, mapFilter], updateMarkers, { deep: true }); onMounted(() => { refresh(true); initMap(); timer = setInterval(refresh, 5000); window.addEventListener('resize', resize) }); onUnmounted(() => { if (timer) clearInterval(timer); window.removeEventListener('resize', resize); chart?.dispose(); map?.destroy() })
 </script>
 
 <style scoped>
-.dash {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.page-intro {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
-}
-.page-title {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 650;
-  letter-spacing: 0.01em;
-  color: var(--text-primary);
-}
-.page-desc {
-  margin: 4px 0 0;
-  font-size: 13px;
-  color: var(--text-muted);
-}
-.refresh {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12.5px;
-  color: var(--text-secondary);
-}
-
-.stats {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
-}
-.label-icon {
-  font-size: 15px;
-  color: var(--text-muted);
-  transition: color 0.2s ease;
-}
-.stat-card:hover .label-icon {
-  color: var(--accent-bright);
-}
-
-.dash-grid {
-  display: grid;
-  grid-template-columns: 1.6fr 1fr;
-  gap: 20px;
-  align-items: start;
-}
-
-.trend-head {
-  flex-wrap: wrap;
-  gap: 12px;
-}
-.trend-controls {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.dev-select {
-  width: 180px;
-}
-.range-switch {
-  display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  background: var(--bg-surface-2);
-  border: 1px solid var(--border-subtle);
-  border-radius: 9px;
-}
-.range-switch button {
-  border: none;
-  background: transparent;
-  color: var(--text-muted);
-  font-family: inherit;
-  font-size: 12px;
-  line-height: 1;
-  padding: 6px 10px;
-  border-radius: 7px;
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
-}
-.range-switch button:hover {
-  color: var(--text-secondary);
-}
-.range-switch button.active {
-  background: var(--accent-dim);
-  color: var(--accent-bright);
-}
-
-.chart {
-  height: 380px;
-}
-
-.more-link {
-  color: var(--accent-bright);
-  font-size: 12px;
-  text-decoration: none;
-}
-.more-link:hover {
-  text-decoration: underline;
-}
-.dev-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.dev-summary {
-  margin-bottom: 6px;
-}
-.dev-summary-bar {
-  height: 6px;
-  border-radius: 999px;
-  background: rgba(226, 98, 90, 0.25);
-  overflow: hidden;
-}
-.bar-online {
-  height: 100%;
-  border-radius: 999px;
-  background: var(--ok);
-  transition: width 0.4s ease;
-}
-.dev-summary-text {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  font-size: 12px;
-  color: var(--text-secondary);
-  margin-top: 8px;
-}
-.dev-summary-text .rate {
-  margin-left: auto;
-  color: var(--text-muted);
-  font-weight: 600;
-}
-.dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  margin-right: 6px;
-}
-.dot.on {
-  background: var(--ok);
-}
-.dot.off {
-  background: var(--danger);
-}
-.dev-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--border-subtle);
-}
-.dev-row:last-child {
-  border-bottom: none;
-}
-.dev-code {
-  width: 84px;
-  flex: none;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-.dev-loc {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-.dev-lux {
-  font-size: 12.5px;
-  color: var(--accent-bright);
-}
-.dev-empty {
-  padding: 24px 0;
-  text-align: center;
-  font-size: 12.5px;
-  color: var(--text-muted);
-}
-
-@media (max-width: 1100px) {
-  .dash-grid {
-    grid-template-columns: 1fr;
-  }
-}
-@media (max-width: 1000px) {
-  .stats {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-@media (max-width: 700px) {
-  .trend-controls {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
-@media (max-width: 560px) {
-  .stats {
-    grid-template-columns: 1fr;
-  }
-  .page-intro {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
+.command-center{display:flex;flex-direction:column;gap:18px;max-width:1600px;margin:auto}.dashboard-title{display:flex;align-items:end;justify-content:space-between;gap:16px}h1{margin:0;font-size:27px;line-height:1.2;letter-spacing:-.035em;font-weight:690}.dashboard-title p,.panel-caption{margin:5px 0 0;color:var(--text-muted);font-size:12px}.refresh-state{display:inline-flex;gap:7px;align-items:center;color:var(--text-secondary);font-size:12px}.command-grid{display:grid;grid-template-columns:245px minmax(0,1fr);gap:14px;min-height:374px}.metrics-rail{display:grid;grid-template-rows:repeat(4,1fr);gap:10px}.metric{display:flex;align-items:center;gap:13px;padding:16px;border:1px solid var(--border-subtle);border-radius:7px;background:var(--bg-surface);box-shadow:var(--shadow-soft);transition:.2s}.metric:hover{transform:translateX(3px);border-color:var(--border)}.metric-icon{width:42px;height:42px;display:grid;place-items:center;flex:none;border-radius:11px;font-size:20px}.metric p{margin:0 0 3px;color:var(--text-secondary);font-size:12px}.metric strong{display:block;color:var(--text-primary);font-size:26px;line-height:1.1;letter-spacing:-.04em}.metric small{margin-left:3px;color:var(--text-muted);font-size:11px;font-weight:500}.metric span{display:block;margin-top:4px;color:var(--text-muted);font-size:10.5px}.blue .metric-icon{background:#15386b;color:#80abff}.green .metric-icon{background:#123d35;color:var(--ok)}.red .metric-icon{background:#412728;color:var(--danger)}.amber .metric-icon{background:var(--accent-dim);color:var(--accent)}.amber strong{color:var(--accent-bright)}.map-panel{position:relative;min-height:374px;overflow:hidden;border:1px solid var(--border);border-radius:7px;background:#07131f;box-shadow:var(--shadow-soft)}.map-image{position:absolute;width:100%;height:100%;object-fit:cover;opacity:.86}.map-panel:after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,rgba(7,19,31,.28),transparent 30%,transparent 68%,rgba(7,19,31,.18));pointer-events:none}.map-heading{position:absolute;z-index:1;top:18px;left:20px;display:flex;flex-direction:column;text-shadow:0 2px 7px #000}.map-heading span{font-size:15px;font-weight:650}.map-heading small{margin-top:3px;color:#abc0da;font-size:11px}.map-tools{position:absolute;z-index:1;top:16px;right:16px;display:grid;overflow:hidden;border:1px solid rgba(180,207,238,.25);border-radius:5px;background:rgba(7,19,31,.8)}.map-tools button{width:32px;height:32px;border:0;border-bottom:1px solid rgba(180,207,238,.16);background:transparent;color:#d9e7f6;font-size:18px;cursor:pointer}.map-tools button:last-child{border-bottom:0}.map-legend{position:absolute;z-index:1;right:16px;bottom:16px;display:grid;gap:2px;padding:7px;border:1px solid rgba(180,207,238,.2);border-radius:5px;background:rgba(7,19,31,.8)}.map-legend button{display:flex;align-items:center;gap:7px;min-width:92px;padding:4px 6px;border:0;border-radius:3px;background:transparent;color:#b3c5da;font:11px var(--font-ui);text-align:left;cursor:pointer}.map-legend button.selected{background:rgba(79,138,220,.18);color:#edf5ff}.map-legend i{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok-glow)}.map-legend i.offline{background:var(--danger);box-shadow:0 0 8px var(--danger-glow)}.map-legend i.all{background:var(--accent);box-shadow:0 0 8px var(--accent-glow)}.map-legend b{margin-left:auto;font-weight:500}.lower-grid{display:grid;grid-template-columns:minmax(360px,.95fr) minmax(580px,1.25fr);gap:14px}.panel{border:1px solid var(--border-subtle);border-radius:7px;background:var(--bg-surface);box-shadow:var(--shadow-soft);overflow:hidden}.panel-head{padding:15px 18px;border-bottom:1px solid var(--border-subtle)}.panel-title{font-size:14px;font-weight:650}.trend-head,.trend-actions{display:flex;align-items:center;justify-content:space-between;gap:10px}.device-select{width:94px}.range-switch{display:inline-flex;padding:2px;border:1px solid var(--border-subtle);border-radius:5px;background:#091726}.range-switch button{padding:5px 8px;border:0;border-radius:3px;background:transparent;color:var(--text-muted);font:11px var(--font-ui);cursor:pointer}.range-switch button.active{background:rgba(65,119,209,.3);color:#b9d3ff}.chart-wrap{padding:8px 10px 4px}.chart{height:250px}.more-link{color:#9cc1ff;font-size:11px}.device-table{padding:6px 17px 11px}.device-head,.device-row{display:grid;grid-template-columns:1.35fr 1fr .55fr .48fr;align-items:center;column-gap:10px}.device-head{height:29px;color:var(--text-muted);border-bottom:1px solid var(--border-subtle);font-size:10.5px}.device-row{min-height:34px;color:var(--text-secondary);border-bottom:1px solid rgba(137,170,207,.08);font-size:11.5px}.device-row:last-child{border-bottom:0}.device-name{display:flex;align-items:center;gap:7px;color:var(--text-primary)}.device-name b{font-weight:550}.lamp-dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 7px var(--ok-glow)}.lamp-dot.offline{background:var(--danger);box-shadow:none}.location{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.lux{color:var(--accent-bright)}.device-status{font-size:10.5px}.device-status.online{color:var(--ok)}.device-status.offline{color:var(--danger)}.empty{padding:32px 0;color:var(--text-muted);text-align:center;font-size:12px}@media(max-width:1120px){.command-grid{grid-template-columns:210px 1fr}.lower-grid{grid-template-columns:1fr}}@media(max-width:760px){.command-grid{grid-template-columns:1fr}.metrics-rail{grid-template-columns:repeat(2,1fr);grid-template-rows:none}.metric{min-height:94px}.map-panel{min-height:320px}.dashboard-title{align-items:flex-start;flex-direction:column}.trend-head{align-items:flex-start;flex-direction:column}.trend-actions{width:100%}.device-head,.device-row{grid-template-columns:1.25fr 1fr .55fr}.device-head span:last-child,.device-row span:last-child{display:none}}@media(max-width:480px){.metrics-rail{grid-template-columns:1fr}.trend-actions{align-items:flex-start;flex-direction:column}.location{display:none}}
+.map-panel:after{background:transparent}.amap-canvas{position:absolute;inset:0}.map-state{position:absolute;z-index:3;inset:0;display:grid;place-content:center;gap:12px;background:#07131f;color:#b3c5da;font-size:12px}.map-error{text-align:center}.map-error button{padding:6px 10px;border:1px solid var(--border);border-radius:4px;background:#112945;color:#d9e7f6;cursor:pointer}.map-tools button:focus-visible,.map-error button:focus-visible,.map-legend button:focus-visible{outline:2px solid #9cc1ff;outline-offset:2px}:deep(.lamp-marker){display:block;width:22px;height:22px;border:3px solid rgba(235,247,255,.95);border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-sizing:border-box;box-shadow:0 2px 9px rgba(0,0,0,.5)}:deep(.lamp-marker.is-online){background:#36d6a5;box-shadow:0 0 0 4px rgba(54,214,165,.18),0 2px 9px rgba(0,0,0,.5)}:deep(.lamp-marker.is-offline){background:#fa7575;box-shadow:0 0 0 4px rgba(250,117,117,.16),0 2px 9px rgba(0,0,0,.5)}:deep(.map-info){display:grid;gap:4px;min-width:132px;color:#1b2938;font-size:12px}:deep(.map-info strong){font-size:13px}:deep(.map-info span:last-child){color:#65778a}
+.day-strip{display:flex;gap:6px;padding:10px 18px 0;overflow-x:auto}.day-chip{flex:none;padding:4px 10px;border:1px solid var(--border-subtle);border-radius:5px;background:transparent;color:var(--text-muted);font:11px var(--font-ui);cursor:pointer}.day-chip:hover{color:var(--text-primary);border-color:var(--border)}.day-chip.active{background:rgba(65,119,209,.3);color:#b9d3ff;border-color:rgba(65,119,209,.5)}
 </style>
