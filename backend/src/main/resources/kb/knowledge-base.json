@@ -83,7 +83,7 @@
     "id": "kb-mqtt-abnormal",
     "title": "MQTT连接异常",
     "category": "通信维护",
-    "content": "本项目当前为模拟态，未接入真实MQTT Broker，仅预留Topic：遥测 street-light/+/telemetry、心跳 street-light/+/heartbeat、指令 street-light/{deviceId}/command、回执 street-light/{deviceId}/command-reply。通用排查：①确认Broker地址、端口与认证信息配置正确；②检查设备端MQTT客户端连接与保活；③观察设备是否正常发布遥测与心跳消息；④指令下发后关注command-reply回执。",
+    "content": "系统通过 MQTT Broker 接收设备消息。遥测主题为 device/{deviceId}/data，心跳主题为 device/{deviceId}/heartbeat，控制指令主题为 device/{deviceId}/cmd。遥测至少包含 deviceId、lux、ts，可选 temperature、voltage、current、power、energy、lampStatus。排查时先核对 Broker 地址、认证、Topic 与 deviceId 是否一致，再检查时间戳和数值格式；被拒绝的消息会写入 mqtt_dead_letter 表供追溯。",
     "keywords": ["MQTT", "mqtt", "broker", "topic", "发布", "订阅", "连接失败"],
     "source": "内部知识库"
   },

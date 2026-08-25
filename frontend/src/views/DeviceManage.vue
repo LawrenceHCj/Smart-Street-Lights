@@ -1,8 +1,8 @@
 <template>
-  <div class="dev-manage">
+  <div class="workspace-page dev-manage">
     <div class="page-intro">
       <div>
-        <h2 class="page-title">设备管理</h2>
+        <h1 class="page-title">设备管理</h1>
         <p class="page-desc">统一管理路灯设备：添加、查看、解绑</p>
       </div>
       <div class="refresh">
@@ -56,7 +56,7 @@
               <span class="last num">{{ time(row.lastSeen) }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="110" align="right">
+          <el-table-column label="操作" width="110" align="right" fixed="right">
             <template #default="{ row }">
               <el-button
                 size="small"
@@ -70,13 +70,13 @@
             </template>
           </el-table-column>
           <template #empty>
-            <div class="table-empty">暂无设备 —— 设备上线后自动出现在这里</div>
+            <div class="table-empty">暂无接入设备</div>
           </template>
         </el-table>
       </div>
     </div>
 
-    <el-dialog v-model="addVisible" title="添加路灯设备" width="420px" class="device-dialog">
+    <el-dialog v-model="addVisible" title="添加路灯设备" width="min(420px, calc(100vw - 32px))" class="device-dialog">
       <el-form label-position="top" @submit.prevent="submitAdd">
         <el-form-item label="设备编号" required>
           <el-input v-model="form.code" placeholder="如 SL-020" :prefix-icon="ReadingLamp" />
@@ -191,7 +191,7 @@ onMounted(load)
 .dev-manage {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
 .page-intro {
@@ -202,9 +202,9 @@ onMounted(load)
 }
 .page-title {
   margin: 0;
-  font-size: 20px;
-  font-weight: 650;
-  letter-spacing: 0.01em;
+  font-size: 24px;
+  font-weight: 680;
+  letter-spacing: -0.025em;
   color: var(--text-primary);
 }
 .page-desc {
@@ -231,7 +231,7 @@ onMounted(load)
   height: 30px;
   display: grid;
   place-items: center;
-  border-radius: 9px;
+  border-radius: 3px;
   flex: none;
 }
 .device-avatar.on {
@@ -239,7 +239,7 @@ onMounted(load)
   color: var(--accent-bright);
 }
 .device-avatar.off {
-  background: rgba(226, 98, 90, 0.12);
+  background: var(--danger-dim);
   color: var(--danger);
 }
 .device-avatar :deep(.el-icon) {

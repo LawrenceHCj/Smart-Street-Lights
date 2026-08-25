@@ -149,7 +149,7 @@
 | `offlineCount` | long | `status == "OFFLINE"` 的设备数 |
 | `avgLux` | double | 所有 `latestLux` 非空设备的算术平均值；无数据时返回 `0.0` |
 
-**⚠️ 已知行为**：代码中没有任何地方把设备置为 `"OFFLINE"`（MQTT 监听器只写 `"ONLINE"`），所以除非手工改库，**`offlineCount` 恒为 0**。需要补一个离线判定定时任务（见 `FEATURES.md`）。
+设备超过 90 秒未上报时，`DeviceOfflineTask` 每 30 秒检查并将其标记为 `OFFLINE`，同时生成离线告警。
 
 ---
 
@@ -329,7 +329,7 @@ GET /api/light/history?deviceId=SL-001&start=1755748800000&end=1755835200000
 | Broker | `tcp://127.0.0.1:1883` |
 | ClientId | `smartlamp-backend` |
 | 用户名/密码 | 空（`application.yml` 中未配置，匿名连接） |
-| CleanSession | `true` |
+| CleanSession | `false`（自动重连，QoS 1） |
 | 订阅主题 | `device/+/data`、`device/+/heartbeat` |
 
 ### 4.1 光照数据上报
@@ -342,20 +342,32 @@ GET /api/light/history?deviceId=SL-001&start=1755748800000&end=1755835200000
 {
   "deviceId": "SL-001",
   "lux": 320.5,
+  "temperature": 26.3,
+  "voltage": 220.1,
+  "current": 0.42,
+  "power": 92.4,
+  "energy": 14.8,
+  "lampStatus": "ON",
   "ts": 1755835200000
 }
 ```
 
 | 字段 | 类型 | 必填 | 说明 |
 |---|---|---|---|
-| `deviceId` | string | 否 | 缺省时从 topic 第 2 段自动提取 |
-| `lux` | double | **是** | 光照值。**缺失会抛 NPE，该条消息被丢弃** |
+| `deviceId` | string | 否 | 缺省时从 topic 第 2 段自动提取；提供时必须与 Topic 一致 |
+| `lux` | double | **是** | 非负光照值 |
 | `ts` | long | 否 | 缺省时用服务器当前时间 `System.currentTimeMillis()` |
+| `temperature` | double | 否 | 温度 |
+| `voltage` | double | 否 | 电压 |
+| `current` | double | 否 | 电流 |
+| `power` | double | 否 | 功率 |
+| `energy` | double | 否 | 累计电量 |
+| `lampStatus` | string | 否 | `ON` / `OFF` |
 
 **后端处理**
 1. 按 `deviceId` 查 `device` 表；**不存在则自动创建**（`location="未知位置"`，`status="ONLINE"`）
-2. 更新该设备的 `latestLux`、`lastSeen`、`status="ONLINE"`
-3. 向 `light_point` 表**追加一条**历史记录
+2. 在同一事务中更新设备最新遥测快照、`lastSeen`、`status="ONLINE"`
+3. 向 `light_point` 表写入结构化字段和原始 Payload；相同设备和时间戳的 QoS 重投消息不会重复入库
 
 ### 4.2 心跳上报
 
@@ -374,7 +386,7 @@ GET /api/light/history?deviceId=SL-001&start=1755748800000&end=1755835200000
 
 ### 4.3 错误处理
 
-整个消息处理体包在 try-catch 里，任何异常（JSON 解析失败、`lux` 字段缺失等）只在控制台打印 `处理 MQTT 消息失败: xxx`，消息被静默丢弃，不重试、不进死信队列。
+Topic、JSON、设备编号、时间戳和数值字段会在事务写入前校验。失败消息不会更新设备或历史数据，而是记录到 `mqtt_dead_letter` 表（Topic、原始 Payload、错误原因、接收时间），便于运维定位和后续补偿。
 
 ---
 
@@ -391,6 +403,11 @@ GET /api/light/history?deviceId=SL-001&start=1755748800000&end=1755835200000
 | `location` | VARCHAR | | 安装位置 |
 | `status` | VARCHAR | | `ONLINE` / `OFFLINE` |
 | `latest_lux` | DOUBLE | | 最新光照值（冗余快照） |
+| `latest_temperature` | DOUBLE | | 最新温度 |
+| `latest_voltage` | DOUBLE | | 最新电压 |
+| `latest_current` | DOUBLE | | 最新电流 |
+| `latest_power` | DOUBLE | | 最新功率 |
+| `latest_energy` | DOUBLE | | 最新累计电量 |
 | `last_seen` | BIGINT | | 最后上报毫秒时间戳 |
 | `created_at` | DATETIME | | 创建时间 |
 
@@ -399,16 +416,20 @@ GET /api/light/history?deviceId=SL-001&start=1755748800000&end=1755835200000
 | 列 | 类型 | 约束 | 说明 |
 |---|---|---|---|
 | `id` | BIGINT | PK, AUTO_INCREMENT | 主键 |
-| `device_code` | VARCHAR | NOT NULL | 设备编号（**逻辑关联 `device.code`，无外键**） |
+| `device_code` | VARCHAR | NOT NULL, UNIQUE 组合键 | 设备编号（**逻辑关联 `device.code`，无外键**） |
 | `lux` | DOUBLE | NOT NULL | 光照值 |
-| `ts` | BIGINT | NOT NULL | 采集毫秒时间戳 |
+| `ts` | BIGINT | NOT NULL, UNIQUE 组合键 | 采集毫秒时间戳 |
+| `temperature` / `voltage` / `current` | DOUBLE | | 环境与电气遥测 |
+| `power` / `energy` | DOUBLE | | 功率与累计电量 |
+| `lamp_status` | VARCHAR | | 灯具状态 |
+| `raw_payload` | LONGTEXT | | 原始设备报文，用于审计和重放 |
 | `created_at` | DATETIME | | 入库时间 |
 
-**建议**：`light_point` 目前没有索引，历史查询走 `(device_code, ts)` 条件，数据量上来后应补复合索引：
+`(device_code, ts)` 已建立复合索引和唯一约束，用于时间范围查询与消息幂等。
 
-```sql
-CREATE INDEX idx_lightpoint_code_ts ON light_point (device_code, ts);
-```
+### 5.3 `mqtt_dead_letter` —— MQTT 拒绝消息表
+
+保存 `topic`、`payload`、`error_message`、`received_at`，不让格式错误或契约不一致的消息静默消失。
 
 ---
 

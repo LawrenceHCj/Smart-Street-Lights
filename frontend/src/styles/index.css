@@ -1,59 +1,72 @@
-/* 智慧路灯 · 夜间城市指挥中心设计令牌 */
+/* 智慧路灯 · Figma Nexcent-inspired clean operations theme */
 
 :root {
-  --bg-root: #07111d;
-  --bg-surface: #0c1a2a;
-  --bg-surface-2: #102338;
-  --bg-elevated: #142a41;
-  --border-subtle: rgba(137, 170, 207, 0.12);
-  --border: rgba(137, 170, 207, 0.22);
-  --border-strong: rgba(163, 192, 224, 0.32);
+  --bg-root: #f5f7fa;
+  --bg-sidebar: #263238;
+  --bg-surface: #ffffff;
+  --bg-surface-2: #f5f7fa;
+  --bg-elevated: #ffffff;
+  --bg-hover: #e8f5e9;
 
-  --text-primary: #edf5ff;
-  --text-secondary: #a8bad2;
-  --text-muted: #7288a4;
+  --border-subtle: rgba(171, 190, 209, 0.28);
+  --border: rgba(137, 147, 158, 0.34);
+  --border-strong: rgba(77, 77, 77, 0.34);
 
-  /* —— 强调 · 路灯金（克制使用） —— */
-  --accent: #f1b94e;
-  --accent-bright: #ffd47b;
-  --accent-deep: #c98f29;
-  --accent-glow: rgba(241, 185, 78, 0.28);
-  --accent-dim: rgba(241, 185, 78, 0.12);
+  --text-primary: #4d4d4d;
+  --text-secondary: #717171;
+  --text-muted: #89939e;
 
-  /* —— 语义状态 —— */
-  --ok: #42d28b;
-  --ok-glow: rgba(86, 188, 140, 0.35);
-  --warn: #f2943a;
-  --warn-glow: rgba(242, 148, 58, 0.35);
-  --danger: #fb755f;
-  --danger-glow: rgba(226, 98, 90, 0.35);
+  --accent: #4caf4f;
+  --accent-bright: #388e3b;
+  --accent-deep: #237d31;
+  --accent-glow: rgba(76, 175, 79, 0.22);
+  --accent-dim: #e8f5e9;
 
-  /* —— 字体 —— */
-  --font-ui: "InterVariable", "Inter", "PingFang SC", "Hiragino Sans GB",
+  --ok: #2e7d31;
+  --ok-glow: rgba(46, 125, 49, 0.18);
+  --ok-dim: #e8f5e9;
+  --warn: #9a7100;
+  --warn-glow: rgba(251, 192, 45, 0.2);
+  --warn-dim: #fff9e6;
+  --danger: #e53835;
+  --danger-glow: rgba(229, 56, 53, 0.18);
+  --danger-dim: #fff0ef;
+  --info: #2194f3;
+  --info-dim: #eef7ff;
+
+  --font-ui: "Rethink Sans", "InterVariable", "Inter", "PingFang SC", "Hiragino Sans GB",
     "Microsoft YaHei", "Segoe UI", system-ui, -apple-system, sans-serif;
   --font-data: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code",
     "Consolas", "Menlo", monospace;
 
-  /* —— Element Plus 主色（路灯金） —— */
-  --el-color-primary: #f1b94e;
-  --el-color-primary-light-3: #f5cb7c;
-  --el-color-primary-light-5: #f8d99e;
-  --el-color-primary-light-7: #fbe7bf;
-  --el-color-primary-light-8: #fdf0d5;
-  --el-color-primary-light-9: #fff8ea;
-  --el-color-primary-dark-2: #c98f29;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --header-height: 68px;
+  --sidebar-width: 232px;
+  --shadow-soft: 0 2px 10px rgba(171, 190, 209, 0.18);
+  --shadow-lift: 0 20px 48px -24px rgba(38, 50, 56, 0.34);
 
-  /* —— 阴影（柔和、有位移） —— */
-  --shadow-soft: 0 10px 30px -22px rgba(0, 0, 0, 0.86);
-  --shadow-lift: 0 18px 44px -24px rgba(0, 0, 0, 0.92);
+  --el-color-primary: #4caf4f;
+  --el-color-primary-light-3: #66bb69;
+  --el-color-primary-light-5: #81c784;
+  --el-color-primary-light-7: #c8e6c9;
+  --el-color-primary-light-8: #dceddd;
+  --el-color-primary-light-9: #e8f5e9;
+  --el-color-primary-dark-2: #388e3b;
+  --el-color-success: #2e7d31;
+  --el-color-warning: #9a7100;
+  --el-color-danger: #e53835;
+  --el-border-radius-base: 8px;
+  --el-font-family: var(--font-ui);
 }
 
 * {
   box-sizing: border-box;
 }
 
-html.dark {
-  color-scheme: dark;
+html.brand-theme {
+  color-scheme: light;
 }
 
 html,
@@ -62,50 +75,68 @@ body,
   height: 100%;
 }
 
+html {
+  background: var(--bg-root);
+}
+
 body {
   margin: 0;
+  overflow: hidden;
   color: var(--text-primary);
   font-family: var(--font-ui);
   font-size: 14px;
-  line-height: 1.6;
-  background: radial-gradient(1000px 680px at 88% -10%, rgba(30, 85, 135, 0.2), transparent 62%), var(--bg-root);
-  background-attachment: fixed;
+  line-height: 1.55;
+  background: var(--bg-root);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-/* —— 浏览器自带表面，也归设计系统 —— */
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
 ::selection {
-  background: rgba(223, 179, 79, 0.32);
-  color: #fff;
+  color: #263238;
+  background: rgba(76, 175, 79, 0.28);
 }
 
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;
 }
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 999px;
   border: 2px solid transparent;
+  border-radius: 2px;
+  background: var(--border);
   background-clip: padding-box;
 }
+
 ::-webkit-scrollbar-thumb:hover {
   background: var(--border-strong);
   background-clip: padding-box;
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-bright);
   outline-offset: 2px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 
 a {
@@ -113,172 +144,338 @@ a {
   text-decoration: none;
 }
 
-/* —— 数据 / 测量：等宽数字 —— */
+a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .num {
   font-family: var(--font-data);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums slashed-zero;
+  letter-spacing: -0.015em;
 }
 
-/* —— 状态点（安静实时感） —— */
-.status-dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex: none;
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
 }
-.status-dot.online {
-  background: var(--ok);
-  animation: pulse-ok 2.4s infinite;
-}
-.status-dot.offline {
-  background: var(--danger);
-  box-shadow: 0 0 8px 0 var(--danger-glow);
-}
-.status-dot.idle {
+
+.skip-link {
+  position: fixed;
+  z-index: 10000;
+  top: 8px;
+  left: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  color: #151008;
   background: var(--accent);
-  box-shadow: 0 0 8px 0 var(--accent-glow);
+  transform: translateY(-160%);
+  transition: transform 0.16s ease;
 }
 
-@keyframes pulse-ok {
-  0% {
-    box-shadow: 0 0 0 0 var(--ok-glow);
-  }
-  70% {
-    box-shadow: 0 0 0 6px rgba(86, 188, 140, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(86, 188, 140, 0);
-  }
+.skip-link:focus {
+  transform: translateY(0);
 }
 
-/* —— 状态胶囊 —— */
-.status-pill {
+.workspace-page {
+  width: 100%;
+  max-width: 1480px;
+  min-width: 0;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.page-intro {
+  min-height: 48px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.page-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 30px;
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -0.025em;
+}
+
+.page-desc {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.refresh,
+.page-status {
+  min-height: 32px;
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 3px 11px;
-  border-radius: 999px;
+  flex: none;
+  color: var(--text-secondary);
   font-size: 12px;
-  line-height: 1.6;
-  font-weight: 500;
-}
-.status-pill.online {
-  color: var(--ok);
-  background: rgba(86, 188, 140, 0.12);
-}
-.status-pill.offline {
-  color: var(--danger);
-  background: rgba(226, 98, 90, 0.12);
-}
-.status-pill .status-dot {
-  width: 6px;
-  height: 6px;
 }
 
-/* —— 面板 —— */
 .panel {
-  background: var(--bg-surface);
+  min-width: 0;
+  overflow: hidden;
   border: 1px solid var(--border-subtle);
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
   box-shadow: var(--shadow-soft);
 }
+
 .panel-head {
+  min-height: 54px;
+  padding: 12px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
+  gap: 14px;
   border-bottom: 1px solid var(--border-subtle);
+  background: #ffffff;
 }
+
 .panel-title {
-  font-size: 14.5px;
-  font-weight: 600;
-  letter-spacing: 0.01em;
   color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: 0.005em;
 }
+
+.panel-caption {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
 .panel-meta {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
   color: var(--text-muted);
-}
-.panel-body {
-  padding: 20px;
+  font-size: 12px;
 }
 
-/* —— 统计卡 —— */
-.stat-card {
-  position: relative;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: 16px;
-  padding: 20px 22px;
-  box-shadow: var(--shadow-soft);
-  transition: border-color 0.2s ease, transform 0.2s ease, background 0.2s ease;
+.panel-body {
+  padding: 16px;
+}
+
+.table-wrap {
+  min-width: 0;
+  padding: 4px 14px 14px;
   overflow: hidden;
 }
-.stat-card::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: transparent;
-  transition: background 0.2s ease;
+
+.empty-state,
+.table-empty,
+.chart-state {
+  min-height: 96px;
+  padding: 24px 16px;
+  display: grid;
+  place-content: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  text-align: center;
 }
+
+.async-banner {
+  min-height: 44px;
+  padding: 9px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(76, 175, 79, 0.32);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  background: var(--warn-dim);
+  font-size: 12.5px;
+}
+
+.async-banner .el-icon {
+  flex: none;
+  color: var(--warn);
+  font-size: 16px;
+}
+
+.async-banner > span:not(.el-icon) {
+  min-width: 0;
+  flex: 1;
+}
+
+.inline-action {
+  min-height: 28px;
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: var(--bg-surface-2);
+  cursor: pointer;
+}
+
+.inline-action:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent-bright);
+  background: var(--accent-dim);
+}
+
+.inline-action:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.inline-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  display: inline-block;
+  flex: none;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status-dot.online {
+  color: var(--ok);
+  box-shadow: 0 0 0 3px var(--ok-dim);
+}
+
+.status-dot.offline {
+  color: var(--danger);
+  border-radius: 2px;
+  box-shadow: 0 0 0 3px var(--danger-dim);
+}
+
+.status-dot.idle {
+  color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+.status-pill {
+  min-height: 24px;
+  padding: 2px 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  font-size: 12px;
+  font-weight: 550;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.status-pill.online {
+  color: var(--ok);
+  border-color: rgba(23, 122, 80, 0.2);
+  background: var(--ok-dim);
+}
+
+.status-pill.offline {
+  color: var(--danger);
+  border-color: rgba(180, 35, 24, 0.2);
+  background: var(--danger-dim);
+}
+
+.status-pill .status-dot {
+  width: 6px;
+  height: 6px;
+  box-shadow: none;
+}
+
+.stat-card {
+  position: relative;
+  min-width: 0;
+  min-height: 126px;
+  padding: 16px 18px;
+  overflow: hidden;
+  border: 1px solid var(--border-subtle);
+  border-top: 0;
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-soft);
+  transition: border-color 0.16s ease, background-color 0.16s ease;
+}
+
 .stat-card:hover {
   border-color: var(--border);
   background: var(--bg-surface-2);
-  transform: translateY(-2px);
 }
-.stat-card.accent::before {
-  background: var(--accent);
+
+.stat-card.accent {
+  border-color: rgba(76, 175, 79, 0.28);
 }
+
 .stat-label {
   display: flex;
   align-items: center;
-  gap: 9px;
-  font-size: 12.5px;
+  gap: 8px;
   color: var(--text-secondary);
-  letter-spacing: 0.02em;
+  font-size: 12.5px;
 }
+
 .stat-value {
-  margin-top: 12px;
-  font-family: var(--font-data);
-  font-variant-numeric: tabular-nums;
-  font-size: 36px;
-  font-weight: 650;
-  line-height: 1;
+  min-height: 38px;
+  margin-top: 10px;
   color: var(--text-primary);
-  letter-spacing: -0.02em;
+  font-family: var(--font-data);
+  font-size: clamp(28px, 2.5vw, 34px);
+  font-variant-numeric: tabular-nums;
+  font-weight: 680;
+  line-height: 1.05;
+  letter-spacing: -0.035em;
 }
+
 .stat-card.accent .stat-value {
   color: var(--accent-bright);
 }
+
 .stat-value .unit {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-muted);
   margin-left: 4px;
-}
-.stat-sub {
-  margin-top: 10px;
-  font-size: 12px;
   color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0;
 }
 
-/* —— Element Plus 深色精修 —— */
-html.dark .el-button {
-  border-radius: 10px;
-  font-weight: 500;
+.stat-sub {
+  min-height: 18px;
+  margin-top: 7px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-html.dark .el-button--primary {
-  --el-button-text-color: #13100a;
-  --el-button-hover-text-color: #13100a;
-  --el-button-active-text-color: #13100a;
+
+html.brand-theme .el-button {
+  min-height: 32px;
+  border-radius: var(--radius-md);
+  font-weight: 550;
+  transition: color 0.16s ease, border-color 0.16s ease, background-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+html.brand-theme .el-button--primary {
+  --el-button-text-color: #ffffff;
+  --el-button-hover-text-color: #ffffff;
+  --el-button-active-text-color: #ffffff;
   --el-button-bg-color: var(--accent);
   --el-button-hover-bg-color: var(--accent-bright);
   --el-button-active-bg-color: var(--accent-deep);
@@ -286,79 +483,197 @@ html.dark .el-button--primary {
   --el-button-hover-border-color: var(--accent-bright);
   --el-button-active-border-color: var(--accent-deep);
 }
-html.dark .el-button--primary:not(.is-disabled):hover {
-  box-shadow: 0 6px 18px -8px var(--accent-glow);
+
+html.brand-theme .el-button--primary:not(.is-disabled):hover {
+  box-shadow: 0 6px 18px -9px var(--accent-glow);
 }
-html.dark .el-button.is-text {
+
+html.brand-theme .el-button.is-text {
   color: var(--text-secondary);
 }
-html.dark .el-button.is-text:hover {
-  background: var(--bg-surface-2);
+
+html.brand-theme .el-button.is-text:hover {
   color: var(--text-primary);
+  background: var(--bg-hover);
 }
 
-html.dark .el-card {
+html.brand-theme .el-button:focus-visible,
+html.brand-theme .el-input__wrapper:focus-within,
+html.brand-theme .el-textarea__inner:focus,
+html.brand-theme .el-select__wrapper:focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 2px;
+}
+
+html.brand-theme .el-card {
   --el-card-bg-color: var(--bg-surface);
   border: 1px solid var(--border-subtle);
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-soft);
 }
-html.dark .el-card__header {
+
+html.brand-theme .el-card__header {
   border-bottom: 1px solid var(--border-subtle);
   color: var(--text-primary);
-  font-weight: 600;
+  font-weight: 650;
 }
 
-html.dark .el-table {
+html.brand-theme .el-table {
   --el-table-bg-color: transparent;
   --el-table-tr-bg-color: transparent;
-  --el-table-header-bg-color: transparent;
+  --el-table-header-bg-color: rgba(148, 177, 207, 0.035);
   --el-table-header-text-color: var(--text-muted);
   --el-table-text-color: var(--text-primary);
   --el-table-border-color: var(--border-subtle);
   --el-table-row-hover-bg-color: var(--bg-surface-2);
   --el-table-current-row-bg-color: var(--accent-dim);
-  font-size: 13.5px;
+  font-size: 13px;
 }
-html.dark .el-table th.el-table__cell {
-  font-weight: 600;
-  font-size: 12px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+
+html.brand-theme .el-table th.el-table__cell {
+  height: 42px;
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.035em;
 }
-html.dark .el-table__inner-wrapper::before {
+
+html.brand-theme .el-table td.el-table__cell {
+  height: 46px;
+}
+
+html.brand-theme .el-table__inner-wrapper::before {
   display: none;
 }
 
-html.dark .el-input__wrapper,
-html.dark .el-textarea__inner {
+html.brand-theme .el-input__wrapper,
+html.brand-theme .el-select__wrapper,
+html.brand-theme .el-textarea__inner,
+html.brand-theme .el-input-number .el-input__wrapper {
+  border-radius: var(--radius-md);
   background-color: var(--bg-surface-2);
   box-shadow: 0 0 0 1px var(--border) inset;
-  border-radius: 10px;
 }
-html.dark .el-input__wrapper.is-focus,
-html.dark .el-textarea__inner:focus {
+
+html.brand-theme .el-input__wrapper.is-focus,
+html.brand-theme .el-select__wrapper.is-focused,
+html.brand-theme .el-textarea__inner:focus {
   box-shadow: 0 0 0 1px var(--accent) inset, 0 0 0 3px var(--accent-dim);
 }
 
-html.dark .el-dropdown-menu,
-html.dark .el-message,
-html.dark .el-notification,
-html.dark .el-dialog,
-html.dark .el-popper.is-light,
-html.dark .el-select-dropdown {
-  --el-bg-color-overlay: var(--bg-elevated);
-  background: var(--bg-elevated);
+html.brand-theme .el-form-item__label {
+  color: var(--text-secondary);
+  font-weight: 550;
+}
+
+html.brand-theme .el-radio-button__inner {
+  color: var(--text-secondary);
+  border-color: var(--border);
+  background: var(--bg-surface-2);
+  box-shadow: none;
+}
+
+html.brand-theme .el-radio-button__original-radio:checked + .el-radio-button__inner {
+  color: var(--accent-bright);
+  border-color: rgba(76, 175, 79, 0.42);
+  background: var(--accent-dim);
+  box-shadow: -1px 0 0 0 rgba(76, 175, 79, 0.42);
+}
+
+html.brand-theme .el-dialog {
+  width: min(440px, calc(100vw - 32px));
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-elevated);
   box-shadow: var(--shadow-lift);
 }
-html.dark .el-dropdown-menu__item:not(.is-disabled):hover,
-html.dark .el-select-dropdown__item.is-hovering {
-  background: var(--bg-surface-2);
-  color: var(--text-primary);
+
+html.brand-theme .el-dialog__header {
+  margin-right: 0;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border-subtle);
 }
-html.dark .el-popper .el-popper__arrow::before {
+
+html.brand-theme .el-dialog__title {
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 650;
+}
+
+html.brand-theme .el-dropdown-menu,
+html.brand-theme .el-message,
+html.brand-theme .el-notification,
+html.brand-theme .el-popper.is-light,
+html.brand-theme .el-select-dropdown,
+html.brand-theme .el-message-box {
+  --el-bg-color-overlay: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
   background: var(--bg-elevated);
+  box-shadow: var(--shadow-lift);
+}
+
+html.brand-theme .el-dropdown-menu__item:not(.is-disabled):hover,
+html.brand-theme .el-select-dropdown__item.is-hovering {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
+html.brand-theme .el-popper .el-popper__arrow::before {
   border-color: var(--border);
+  background: var(--bg-elevated);
+}
+
+@media (max-width: 700px) {
+  .workspace-page {
+    gap: 14px;
+  }
+
+  .page-intro {
+    min-height: 0;
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .page-title {
+    font-size: 21px;
+  }
+
+  .panel-head {
+    min-height: 52px;
+    padding: 11px 13px;
+  }
+
+  .panel-body {
+    padding: 13px;
+  }
+
+  .table-wrap {
+    padding: 3px 10px 10px;
+  }
+
+  html.brand-theme .el-button {
+    min-height: 36px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skip-link,
+  .stat-card,
+  .el-button,
+  .el-input__wrapper,
+  .el-textarea__inner {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .status-dot {
+    border: 2px solid currentColor;
+  }
+
+  .status-dot.offline {
+    border-radius: 0;
+  }
 }

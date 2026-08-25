@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>智慧路灯系统｜功能与技术架构</title>
+  <style>
+    :root { --paper:#f5f7f4; --ink:#202624; --muted:#66716c; --rule:#d6e1db; --teal:#13776d; --teal-tint:#e4f4f1; --gold:#bd8531; --gold-tint:#fff0d2; --blue:#53699f; --blue-tint:#eef1ff; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--paper); color:var(--ink); font-family:"Microsoft YaHei","Segoe UI",Arial,sans-serif; }
+    main { width:1600px; margin:0 auto; padding:48px 56px 28px; }
+    header { border-bottom:1px solid var(--rule); padding-bottom:24px; margin-bottom:34px; }
+    .eyebrow { color:var(--teal); font:700 12px Consolas,"Microsoft YaHei",monospace; letter-spacing:.16em; }
+    h1 { margin:10px 0 8px; font-size:38px; letter-spacing:.02em; }
+    .subtitle { margin:0; color:var(--muted); font-size:17px; }
+    section { margin-top:36px; }
+    h2 { margin:0 0 14px; font-size:23px; color:var(--teal); }
+    .note { margin:0 0 18px; color:var(--muted); font-size:14px; }
+    svg { width:100%; height:auto; display:block; }
+    footer { border-top:1px solid var(--rule); margin-top:24px; padding-top:15px; color:var(--muted); font-size:13px; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="eyebrow">SMART STREET LIGHTS · PROJECT ARCHITECTURE</div>
+    <h1>智慧路灯系统｜功能与技术架构</h1>
+    <p class="subtitle">基于当前源码：实时监测、设备控制、告警闭环、AI 运维问答与 MQTT 数据接入</p>
+  </header>
+
+  <section>
+    <h2>01 / 功能架构</h2>
+    <p class="note">市政人员通过统一管理台完成“看得见、管得住、能追溯”的路灯运维闭环。</p>
+    <svg viewBox="0 0 1488 620" role="img" aria-labelledby="functional-title functional-desc">
+      <title id="functional-title">智慧路灯系统功能架构</title>
+      <desc id="functional-desc">功能架构展示市政人员使用的监测、设备、控制、告警和 AI 运维能力，以及它们与物联网设备和数据服务的关系。</desc>
+      <defs>
+        <marker id="f-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#66716c"/></marker>
+        <marker id="f-arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#13776d"/></marker>
+        <style>
+          .z{fill:#ffffff;stroke:#d6e1db;stroke-width:1.2}.zh{font:700 12px Consolas,"Microsoft YaHei",monospace;letter-spacing:.12em;fill:#66716c}.box{fill:#fff;stroke:#aebfb7;stroke-width:1.2}.focus{fill:#e4f4f1;stroke:#13776d;stroke-width:1.6}.aux{fill:#fff0d2;stroke:#bd8531;stroke-width:1.2}.n{font:700 17px "Microsoft YaHei",sans-serif;fill:#202624}.s{font:13px "Microsoft YaHei",sans-serif;fill:#66716c}.tag{font:700 10px Consolas,"Microsoft YaHei",monospace;fill:#13776d;letter-spacing:.08em}.line{fill:none;stroke:#66716c;stroke-width:1.4;marker-end:url(#f-arrow)}.primary{fill:none;stroke:#13776d;stroke-width:1.8;marker-end:url(#f-arrow-accent)}.dash{fill:none;stroke:#66716c;stroke-width:1.2;stroke-dasharray:5 4;marker-end:url(#f-arrow)}
+        </style>
+      </defs>
+      <rect width="1488" height="620" fill="#f5f7f4"/>
+      <!-- Zones -->
+      <rect class="z" x="24" y="48" width="224" height="488" rx="8"/><text class="zh" x="44" y="76">运维角色</text>
+      <rect class="z" x="288" y="48" width="704" height="488" rx="8"/><text class="zh" x="308" y="76">智慧路灯管理台</text>
+      <rect class="z" x="1032" y="48" width="432" height="488" rx="8"/><text class="zh" x="1052" y="76">现场设备与运维知识</text>
+      <!-- connectors first -->
+      <path class="primary" d="M216 192 H344"/>
+      <path class="primary" d="M600 228 V272"/>
+      <path class="line" d="M728 192 H800"/>
+      <path class="line" d="M728 404 H800"/>
+      <path class="primary" d="M928 192 H1104"/>
+      <path class="line" d="M928 404 H1104"/>
+      <path class="dash" d="M1248 272 V340"/>
+      <path class="dash" d="M1248 404 V456"/>
+      <!-- Role -->
+      <rect class="focus" x="56" y="152" width="160" height="80" rx="6"/><text class="tag" x="76" y="178">USER</text><text class="n" x="136" y="204" text-anchor="middle">市政 / 路灯管理员</text><text class="s" x="136" y="224" text-anchor="middle">监控、处置、维护</text>
+      <rect class="box" x="56" y="360" width="160" height="80" rx="6"/><text class="tag" x="76" y="386">OPS</text><text class="n" x="136" y="412" text-anchor="middle">运维人员</text><text class="s" x="136" y="432" text-anchor="middle">告警确认与排障</text>
+      <!-- Console modules -->
+      <rect class="focus" x="344" y="136" width="256" height="112" rx="6"/><text class="tag" x="364" y="162">REALTIME</text><text class="n" x="472" y="192" text-anchor="middle">监测与可视化</text><text class="s" x="472" y="216" text-anchor="middle">总览 · 地图 · 光照趋势</text>
+      <rect class="box" x="728" y="136" width="200" height="112" rx="6"/><text class="tag" x="748" y="162">ASSET</text><text class="n" x="828" y="192" text-anchor="middle">设备管理</text><text class="s" x="828" y="216" text-anchor="middle">新增 · 绑定 · 状态</text>
+      <rect class="box" x="344" y="328" width="256" height="112" rx="6"/><text class="tag" x="364" y="354">AUTOMATION</text><text class="n" x="472" y="384" text-anchor="middle">控制与联动</text><text class="s" x="472" y="408" text-anchor="middle">手动开关 · 阈值策略</text>
+      <rect class="box" x="728" y="328" width="200" height="112" rx="6"/><text class="tag" x="748" y="354">ALERT</text><text class="n" x="828" y="384" text-anchor="middle">告警中心</text><text class="s" x="828" y="408" text-anchor="middle">离线 · 确认 · 处置</text>
+      <!-- External -->
+      <rect class="aux" x="1104" y="136" width="288" height="112" rx="6"/><text class="tag" x="1124" y="162" fill="#8a5b14">IOT</text><text class="n" x="1248" y="192" text-anchor="middle">路灯设备与传感器</text><text class="s" x="1248" y="216" text-anchor="middle">光照、心跳、控制回执</text>
+      <rect class="box" x="1104" y="340" width="288" height="112" rx="6"/><text class="tag" x="1124" y="366">AI OPS</text><text class="n" x="1248" y="396" text-anchor="middle">AI 维护问答</text><text class="s" x="1248" y="420" text-anchor="middle">知识检索 · 故障排查建议</text>
+      <line x1="24" y1="568" x2="1464" y2="568" stroke="#d6e1db"/><text class="zh" x="24" y="600">主路径：监测数据进入管理台；控制与告警驱动现场处置。虚线：维护知识与辅助能力。</text>
+    </svg>
+  </section>
+
+  <section>
+    <h2>02 / 技术架构</h2>
+    <p class="note">前端通过 REST / SSE 连接 Spring Boot 服务；后端经 MQTT 接入设备，并将实时快照与历史数据持久化至 MySQL。</p>
+    <svg viewBox="0 0 1488 652" role="img" aria-labelledby="technical-title technical-desc">
+      <title id="technical-title">智慧路灯系统技术架构</title>
+      <desc id="technical-desc">技术架构展示 Vue 前端、Spring Boot 后端、MQTT 通信、MySQL 存储以及 AI 智能体服务之间的通信关系。</desc>
+      <defs>
+        <marker id="t-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#66716c"/></marker>
+        <marker id="t-arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0,8 3,0 6" fill="#53699f"/></marker>
+        <style>
+          .z{fill:#ffffff;stroke:#d6e1db;stroke-width:1.2}.zh{font:700 12px Consolas,"Microsoft YaHei",monospace;letter-spacing:.12em;fill:#66716c}.box{fill:#fff;stroke:#aebfb7;stroke-width:1.2}.focus{fill:#e4f4f1;stroke:#13776d;stroke-width:1.6}.store{fill:#eef1ff;stroke:#53699f;stroke-width:1.2}.ext{fill:#fff0d2;stroke:#bd8531;stroke-width:1.2}.n{font:700 17px "Microsoft YaHei",sans-serif;fill:#202624}.s{font:13px Consolas,"Microsoft YaHei",monospace;fill:#66716c}.tag{font:700 10px Consolas,"Microsoft YaHei",monospace;fill:#13776d;letter-spacing:.08em}.line{fill:none;stroke:#66716c;stroke-width:1.4;marker-end:url(#t-arrow)}.link{fill:none;stroke:#53699f;stroke-width:1.6;marker-end:url(#t-arrow-link)}.dash{fill:none;stroke:#66716c;stroke-width:1.2;stroke-dasharray:5 4;marker-end:url(#t-arrow)}
+        </style>
+      </defs>
+      <rect width="1488" height="652" fill="#f5f7f4"/>
+      <!-- Zones -->
+      <rect class="z" x="24" y="48" width="272" height="492" rx="8"/><text class="zh" x="44" y="76">前端 · 5173</text>
+      <rect class="z" x="336" y="48" width="720" height="492" rx="8"/><text class="zh" x="356" y="76">后端服务 · Spring Boot / Java 17 · 8080</text>
+      <rect class="z" x="1096" y="48" width="368" height="492" rx="8"/><text class="zh" x="1116" y="76">外部基础设施</text>
+      <!-- Connectors -->
+      <path class="link" d="M240 196 H416"/>
+      <path class="link" d="M240 380 H304 Q312 380 312 372 V224 Q312 216 320 216 H416"/>
+      <path class="line" d="M568 216 H656"/>
+      <path class="line" d="M832 216 H912"/>
+      <path class="line" d="M736 272 V344"/>
+      <path class="link" d="M1008 216 H1040 Q1048 216 1048 224 V392 Q1048 400 1056 400 H1176"/>
+      <path class="line" d="M568 400 H600 Q608 400 608 408 V472 Q608 480 616 480 H1032 Q1040 480 1040 472 V224 Q1040 216 1048 216 H1176"/>
+      <path class="dash" d="M1312 272 V344"/>
+      <path class="dash" d="M656 400 H568"/>
+      <!-- Frontend -->
+      <rect class="focus" x="56" y="140" width="184" height="112" rx="6"/><text class="tag" x="76" y="166">VUE 3</text><text class="n" x="148" y="196" text-anchor="middle">管理控制台</text><text class="s" x="148" y="220" text-anchor="middle">TypeScript · Vite</text>
+      <rect class="box" x="56" y="324" width="184" height="112" rx="6"/><text class="tag" x="76" y="350">UI / CHART</text><text class="n" x="148" y="380" text-anchor="middle">页面与可视化</text><text class="s" x="148" y="404" text-anchor="middle">Element Plus · ECharts</text>
+      <!-- Backend -->
+      <rect class="focus" x="416" y="160" width="152" height="112" rx="6"/><text class="tag" x="436" y="186">API</text><text class="n" x="492" y="216" text-anchor="middle">REST / SSE</text><text class="s" x="492" y="240" text-anchor="middle">Controller</text>
+      <rect class="box" x="656" y="160" width="176" height="112" rx="6"/><text class="tag" x="676" y="186">DOMAIN</text><text class="n" x="744" y="216" text-anchor="middle">业务服务层</text><text class="s" x="744" y="240" text-anchor="middle">设备 · 告警 · 控制</text>
+      <rect class="box" x="912" y="160" width="96" height="112" rx="6"/><text class="tag" x="924" y="186">JPA</text><text class="n" x="960" y="216" text-anchor="middle">数据访问</text><text class="s" x="960" y="240" text-anchor="middle">Repository</text>
+      <rect class="store" x="656" y="344" width="176" height="112" rx="6"/><text class="tag" x="676" y="370" fill="#53699f">AGENT</text><text class="n" x="744" y="400" text-anchor="middle">AI 运维智能体</text><text class="s" x="744" y="424" text-anchor="middle">RAG · LLM Client</text>
+      <rect class="ext" x="416" y="344" width="152" height="112" rx="6"/><text class="tag" x="436" y="370" fill="#8a5b14">MQTT</text><text class="n" x="492" y="400" text-anchor="middle">消息适配器</text><text class="s" x="492" y="424" text-anchor="middle">Paho · Topic</text>
+      <!-- Infra -->
+      <rect class="ext" x="1176" y="160" width="272" height="112" rx="6"/><text class="tag" x="1196" y="186" fill="#8a5b14">MQTT BROKER</text><text class="n" x="1312" y="216" text-anchor="middle">设备消息总线</text><text class="s" x="1312" y="240" text-anchor="middle">127.0.0.1:1883</text>
+      <rect class="store" x="1176" y="344" width="272" height="112" rx="6"/><text class="tag" x="1196" y="370" fill="#53699f">MYSQL</text><text class="n" x="1312" y="400" text-anchor="middle">业务与遥测数据库</text><text class="s" x="1312" y="424" text-anchor="middle">device · light_point · alarm</text>
+      <line x1="24" y1="576" x2="1464" y2="576" stroke="#d6e1db"/><text class="zh" x="24" y="608">关键协议：浏览器 ⇄ REST / SSE ⇄ Spring Boot ⇄ JPA / MQTT ⇄ MySQL 与现场设备。</text>
+    </svg>
+  </section>
+  <footer>架构依据：frontend/、backend/、README.md、FEATURES.md · 生成日期：2026-08-23</footer>
+</main>
+</body>
+</html>

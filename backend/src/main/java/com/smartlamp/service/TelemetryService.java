@@ -19,8 +19,9 @@ public class TelemetryService {
                 ? repository.findAllByOrderByTsDesc(PageRequest.of(0, limit))
                 : repository.findByDeviceCodeOrderByTsDesc(deviceId, PageRequest.of(0, limit));
         return points.stream()
-                .map(point -> new TelemetryDTO(point.getId(), point.getDeviceCode(), point.getLux(), null,
-                        point.getTs(), "MQTT"))
+                .map(point -> new TelemetryDTO(point.getId(), point.getDeviceCode(), point.getLux(),
+                        point.getTemperature(), point.getVoltage(), point.getCurrent(), point.getPower(),
+                        point.getEnergy(), point.getLampStatus(), point.getTs(), "MQTT"))
                 .toList();
     }
 }

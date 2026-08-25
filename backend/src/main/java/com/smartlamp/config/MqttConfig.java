@@ -34,7 +34,11 @@ public class MqttConfig {
         DefaultMqttPahoClientFactory factory = new DefaultMqttPahoClientFactory();
         MqttConnectOptions options = new MqttConnectOptions();
         options.setServerURIs(new String[]{brokerUrl});
-        options.setCleanSession(true);
+        options.setAutomaticReconnect(true);
+        options.setCleanSession(false);
+        options.setConnectionTimeout(10);
+        options.setKeepAliveInterval(30);
+        options.setMaxInflight(1000);
         if (username != null && !username.isEmpty()) {
             options.setUserName(username);
         }
@@ -56,6 +60,7 @@ public class MqttConfig {
         MqttPahoMessageDrivenChannelAdapter adapter =
                 new MqttPahoMessageDrivenChannelAdapter(clientId, mqttClientFactory(),
                         "device/+/data", "device/+/heartbeat");
+        adapter.setQos(1);
         adapter.setOutputChannel(mqttInputChannel());
         return adapter;
     }
@@ -70,6 +75,8 @@ public class MqttConfig {
     public MqttPahoMessageHandler mqttOutboundHandler() {
         MqttPahoMessageHandler handler = new MqttPahoMessageHandler(clientId + "-publisher", mqttClientFactory());
         handler.setDefaultTopic("device/default/cmd");
+        handler.setDefaultQos(1);
+        handler.setAsync(true);
         return handler;
     }
 

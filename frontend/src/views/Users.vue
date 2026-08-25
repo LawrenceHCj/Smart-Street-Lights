@@ -1,8 +1,8 @@
 <template>
-  <div class="users">
+  <div class="workspace-page users">
     <div class="page-intro">
       <div>
-        <h2 class="page-title">用户与权限</h2>
+        <h1 class="page-title">用户与权限</h1>
         <p class="page-desc">管理平台账号与角色权限</p>
       </div>
       <div class="refresh">
@@ -55,7 +55,7 @@
               <span class="created num">{{ time(row.createdAt) }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="110" align="right">
+          <el-table-column label="操作" width="110" align="right" fixed="right">
             <template #default="{ row }">
               <el-button
                 size="small"
@@ -70,14 +70,14 @@
           </el-table-column>
           <template #empty>
             <div class="table-empty">
-              {{ ready ? '暂无用户' : '暂无数据 —— 用户接口就绪后自动加载' }}
+              {{ ready ? '暂无用户账号' : '用户服务暂不可用' }}
             </div>
           </template>
         </el-table>
       </div>
     </div>
 
-    <el-dialog v-model="addVisible" title="添加用户" width="420">
+    <el-dialog v-model="addVisible" title="添加用户" width="min(420px, calc(100vw - 32px))">
       <el-form label-position="top" @submit.prevent>
         <el-form-item label="用户名">
           <el-input v-model="form.username" placeholder="登录账号" />
@@ -198,7 +198,7 @@ onMounted(load)
 .users {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
 .page-intro {
@@ -209,9 +209,9 @@ onMounted(load)
 }
 .page-title {
   margin: 0;
-  font-size: 20px;
-  font-weight: 650;
-  letter-spacing: 0.01em;
+  font-size: 24px;
+  font-weight: 680;
+  letter-spacing: -0.025em;
   color: var(--text-primary);
 }
 .page-desc {
@@ -238,7 +238,7 @@ onMounted(load)
   height: 30px;
   display: grid;
   place-items: center;
-  border-radius: 9px;
+  border-radius: 3px;
   flex: none;
   background: var(--accent-dim);
   color: var(--accent-bright);

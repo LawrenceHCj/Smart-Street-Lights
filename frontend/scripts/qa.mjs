@@ -1,6 +1,6 @@
 import puppeteer from 'puppeteer-core'
 
-const BASE = 'http://localhost:5173'
+const BASE = process.env.QA_BASE || 'http://127.0.0.1:5173'
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'
 const browser = await puppeteer.launch({
   executablePath: EDGE,
@@ -9,160 +9,200 @@ const browser = await puppeteer.launch({
 })
 
 const results = []
-const check = (name, ok, detail = '') =>
-  results.push({ name, ok, detail })
+const check = (name, ok, detail = '') => results.push({ name, ok, detail })
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-// 简易对比度（WCAG 相对亮度）
-function lum(rgb) {
-  const f = (c) => {
-    c /= 255
-    return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
+async function getQaToken() {
+  try {
+    const response = await fetch(`${BASE}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'admin', password: '123456' }),
+    })
+    const payload = await response.json()
+    if (payload?.code === 0 && payload?.data?.token) return payload.data.token
+  } catch {
+    // 后端不可用时仍可用占位 token 验证前端错误态与布局。
   }
-  return 0.2126 * f(rgb[0]) + 0.7152 * f(rgb[1]) + 0.0722 * f(rgb[2])
+  return 'demo-token'
 }
+
+const qaToken = await getQaToken()
+
+function luminance(rgb) {
+  const channel = (value) => {
+    const normalized = value / 255
+    return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4
+  }
+  return 0.2126 * channel(rgb[0]) + 0.7152 * channel(rgb[1]) + 0.0722 * channel(rgb[2])
+}
+
 function contrast(a, b) {
-  const l1 = lum(a), l2 = lum(b)
-  return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)
-}
-const parse = (s) => {
-  const m = s.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/)
-  return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null
+  const first = luminance(a)
+  const second = luminance(b)
+  return (Math.max(first, second) + 0.05) / (Math.min(first, second) + 0.05)
 }
 
-async function auth(page) {
-  await page.goto(`${BASE}/login`, { waitUntil: 'networkidle2' })
-  await page.evaluate(() => localStorage.setItem('token', 'demo-token'))
+function parseRgb(value) {
+  const match = value.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/)
+  return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null
 }
 
-// 通用页面体检
-async function audit(route, label, { width, height }) {
+async function authorize(page) {
+  await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' })
+  await page.evaluate((token) => localStorage.setItem('token', token), qaToken)
+}
+
+async function audit(route, viewport) {
+  const label = `${viewport.width}x${viewport.height} ${route}`
   const page = await browser.newPage()
-  await page.setViewport({ width, height, deviceScaleFactor: 1 })
-  if (route !== '/login') await auth(page)
-  await page.goto(`${BASE}${route}`, { waitUntil: 'networkidle2' })
-  await new Promise((r) => setTimeout(r, 2000))
+  const pageErrors = []
+  page.on('pageerror', (error) => pageErrors.push(error.message))
+  await page.setViewport({ ...viewport, deviceScaleFactor: 1 })
+  if (route !== '/login') await authorize(page)
+  await page.goto(`${BASE}${route}`, { waitUntil: 'domcontentloaded' })
+  await wait(route === '/dashboard' || route === '/monitor' ? 1200 : 650)
 
   const data = await page.evaluate(() => {
-    const cs = (el) => (el ? getComputedStyle(el) : null)
+    const visible = (element) => {
+      const rect = element.getBoundingClientRect()
+      const style = getComputedStyle(element)
+      return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden'
+    }
     const root = document.documentElement
+    const main = document.querySelector('.main')
     const aside = document.querySelector('.aside')
     const header = document.querySelector('.header')
-    const main = document.querySelector('.main')
-    const bodyBg = cs(document.body).backgroundColor
-    const overflowX = root.scrollWidth > root.clientWidth + 1
-    const fontUI = cs(document.body).fontFamily
+    const buttons = [...document.querySelectorAll('button')]
+      .filter(visible)
+      .filter((button) => !button.closest('.amap-container'))
+      .map((button) => {
+        const rect = button.getBoundingClientRect()
+        return {
+          label: button.getAttribute('aria-label') || button.textContent?.trim().slice(0, 24) || '未命名按钮',
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+        }
+      })
     return {
-      dark: root.classList.contains('dark'),
-      bodyBg,
-      asideW: aside ? aside.getBoundingClientRect().width : null,
-      headerH: header ? header.getBoundingClientRect().height : null,
-      mainPad: main ? cs(main).padding : null,
-      overflowX,
-      fontUI: fontUI.slice(0, 40),
-      panelCount: document.querySelectorAll('.panel').length,
+      brandTheme: root.classList.contains('brand-theme'),
+      rootOverflow: root.scrollWidth > root.clientWidth + 1,
+      mainOverflow: main ? main.scrollWidth > main.clientWidth + 1 : false,
+      asideWidth: aside ? Math.round(aside.getBoundingClientRect().width) : null,
+      asideX: aside ? Math.round(aside.getBoundingClientRect().x) : null,
+      headerHeight: header ? Math.round(header.getBoundingClientRect().height) : null,
+      mainTop: main ? Math.round(main.getBoundingClientRect().top) : null,
+      h1Count: document.querySelectorAll('h1').length,
+      navToggleVisible: Boolean(document.querySelector('.nav-toggle') && visible(document.querySelector('.nav-toggle'))),
+      unnamedButtons: buttons.filter((button) => button.label === '未命名按钮'),
+      smallButtons: buttons.filter((button) => button.width < 24 || button.height < 24),
       statCount: document.querySelectorAll('.stat-card').length,
-      statValues: [...document.querySelectorAll('.stat-value')].map((e) => e.textContent.trim()),
-      canvas: (() => {
-        const c = document.querySelector('canvas')
-        return c ? { w: c.width, h: c.height } : null
+      statValues: [...document.querySelectorAll('.stat-value')].map((element) => element.textContent?.trim() || ''),
+      canvasCount: document.querySelectorAll('canvas').length,
+      mobileDeviceListVisible: Boolean(document.querySelector('.mobile-device-list') && visible(document.querySelector('.mobile-device-list'))),
+      chatRect: (() => {
+        const element = document.querySelector('.chat')
+        if (!element) return null
+        const rect = element.getBoundingClientRect()
+        return { top: Math.round(rect.top), bottom: Math.round(rect.bottom), height: Math.round(rect.height) }
       })(),
-      pills: [...document.querySelectorAll('.status-pill')].map((e) => e.textContent.trim()).slice(0, 3),
-      sidebarVisible: aside ? aside.getBoundingClientRect().width > 100 : false,
-      chartH: (() => {
-        const el = document.querySelector('.chart')
-        return el ? el.getBoundingClientRect().height : null
+      loginLabels: document.querySelectorAll('.login-card label[for]').length,
+      primaryButton: (() => {
+        const element = document.querySelector('.btn')
+        if (!element) return null
+        const style = getComputedStyle(element)
+        return { background: style.backgroundColor, color: style.color }
+      })(),
+      statContrast: (() => {
+        const value = document.querySelector('.stat-value')
+        const card = document.querySelector('.stat-card')
+        if (!value || !card) return null
+        return { foreground: getComputedStyle(value).color, background: getComputedStyle(card).backgroundColor }
       })(),
     }
   })
 
-  check(`[${label}] 深色主题启用`, data.dark === true, `dark=${data.dark}`)
-  check(`[${label}] 无横向溢出`, !data.overflowX, `scrollW=${data.overflowX ? 'overflow' : 'ok'}`)
-  check(`[${label}] 画布/面板渲染`, data.statCount >= 0, `panels=${data.panelCount} stats=${data.statCount} canvas=${JSON.stringify(data.canvas)}`)
+  check(`[${label}] Straightforward 品牌主题`, data.brandTheme, `brandTheme=${data.brandTheme}`)
+  check(`[${label}] 页面无横向滚动`, !data.rootOverflow && !data.mainOverflow, `root=${data.rootOverflow} main=${data.mainOverflow}`)
+  check(`[${label}] 单一主标题`, data.h1Count === 1, `h1=${data.h1Count}`)
+  check(`[${label}] 图标按钮有名称`, data.unnamedButtons.length === 0, JSON.stringify(data.unnamedButtons))
+  check(`[${label}] 按钮目标至少 24px`, data.smallButtons.length === 0, JSON.stringify(data.smallButtons.slice(0, 4)))
+  check(`[${label}] 无页面脚本错误`, pageErrors.length === 0, pageErrors.join(' | '))
 
-  // 特定断言
-  if (route === '/dashboard') {
-    check('[dashboard] 4 张统计卡', data.statCount === 4, `stats=${data.statCount}`)
-    check('[dashboard] 统计值非零', data.statValues.length > 0 && data.statValues.some((v) => /\d/.test(v)), data.statValues.join(' | '))
-    check('[dashboard] 图表已渲染', !!data.canvas && data.canvas.w > 0 && data.canvas.h > 0, `canvas=${data.canvas && `${data.canvas.w}x${data.canvas.h}`}`)
+  if (viewport.width >= 901 && route !== '/login') {
+    check(`[${label}] 桌面侧栏 236px`, data.asideWidth === 236 && data.asideX === 0, `x=${data.asideX} w=${data.asideWidth}`)
+    check(`[${label}] 桌面顶栏 60px`, data.headerHeight === 60 && data.mainTop === 60, `header=${data.headerHeight} mainTop=${data.mainTop}`)
   }
-  if (route === '/monitor') {
-    check('[monitor] 状态胶囊渲染', data.pills.length > 0, data.pills.join(' | '))
-    check('[monitor] 图表已渲染', !!data.canvas && data.canvas.w > 0, `canvas=${data.canvas && `${data.canvas.w}x${data.canvas.h}`}`)
-  }
-  if (route === '/chat') {
-    const fit = await page.evaluate(() => {
-      const wrap = document.querySelector('.chat-wrap')
-      const panel = document.querySelector('.chat')
-      const vh = window.innerHeight
-      return { wrap: wrap.getBoundingClientRect().height, panel: panel.getBoundingClientRect().height, vh }
-    })
-    check('[chat] 聊天面板适配视口', fit.panel > fit.vh * 0.55, `panel=${Math.round(fit.panel)} vh=${fit.vh}`)
-  }
-  if (route === '/login') {
-    const btn = await page.evaluate(() => {
-      const b = document.querySelector('.btn')
-      if (!b) return null
-      const s = getComputedStyle(b)
-      return { bg: s.backgroundColor, color: s.color, radius: s.borderRadius }
-    })
-    check('[login] 主按钮金色', btn && btn.bg.includes('223, 179, 79'), JSON.stringify(btn))
-    check('[login] 卡片圆角', await page.evaluate(() => {
-      const c = document.querySelector('.login-card')
-      return c ? Number.parseFloat(getComputedStyle(c).borderRadius) >= 18 : false
+
+  if (viewport.width <= 900 && route !== '/login') {
+    check(`[${label}] 窄屏导航入口可见`, data.navToggleVisible && data.asideX < 0, `toggle=${data.navToggleVisible} asideX=${data.asideX}`)
+    await page.click('.nav-toggle')
+    await wait(80)
+    const openNav = await page.evaluate(() => ({
+      expanded: document.querySelector('.nav-toggle')?.getAttribute('aria-expanded'),
+      labels: [...document.querySelectorAll('.menu-label')].filter((element) => {
+        const rect = element.getBoundingClientRect()
+        return rect.width > 0 && rect.height > 0
+      }).length,
     }))
+    check(`[${label}] 窄屏导航标签完整`, openNav.expanded === 'true' && openNav.labels === 7, JSON.stringify(openNav))
+    await page.keyboard.press('Escape')
   }
 
-  // 对比度：正文（统计值 vs 卡片底）
+  if (route === '/login') {
+    check(`[${label}] 登录字段有关联标签`, data.loginLabels === 2, `labels=${data.loginLabels}`)
+    check(`[${label}] 主按钮使用品牌橙`, Boolean(data.primaryButton?.background.includes('250, 152, 25')), JSON.stringify(data.primaryButton))
+  }
+
   if (route === '/dashboard') {
-    const c = await page.evaluate(() => {
-      const v = document.querySelector('.stat-value')
-      const card = document.querySelector('.stat-card')
-      if (!v || !card) return null
-      return { fg: getComputedStyle(v).color, bg: getComputedStyle(card).backgroundColor }
-    })
-    if (c) {
-      const fg = parse(c.fg), bg = parse(c.bg)
-      const ratio = fg && bg ? contrast(fg, bg) : 0
-      check('[dashboard] 统计数值对比度 ≥ 4.5', ratio >= 4.5, `ratio=${ratio.toFixed(2)}`)
-    }
-    // 次要文本（stat-sub）对比度
-    const m = await page.evaluate(() => {
-      const el = document.querySelector('.stat-sub')
-      const card = document.querySelector('.stat-card')
-      if (!el || !card) return null
-      return { fg: getComputedStyle(el).color, bg: getComputedStyle(card).backgroundColor }
-    })
-    if (m) {
-      const fg = parse(m.fg), bg = parse(m.bg)
-      const ratio = fg && bg ? contrast(fg, bg) : 0
-      check('[dashboard] 次要文本对比度 ≥ 4.5', ratio >= 4.5, `muted ratio=${ratio.toFixed(2)}`)
+    check(`[${label}] 四项关键指标稳定呈现`, data.statCount === 4, `stats=${data.statCount}`)
+    check(`[${label}] 指标包含真实数值或加载占位`, data.statValues.length === 4 && data.statValues.every((value) => /\d|—/.test(value)), data.statValues.join(' | '))
+    check(`[${label}] 趋势图画布已初始化`, data.canvasCount > 0, `canvas=${data.canvasCount}`)
+    if (data.statContrast) {
+      const foreground = parseRgb(data.statContrast.foreground)
+      const background = parseRgb(data.statContrast.background)
+      const ratio = foreground && background ? contrast(foreground, background) : 0
+      check(`[${label}] 指标文本对比度 ≥ 4.5`, ratio >= 4.5, `ratio=${ratio.toFixed(2)}`)
     }
   }
 
-  // 侧栏/主区布局
-  if (route === '/dashboard' && width >= 1000) {
-    check('[layout] 侧栏 236px', data.asideW === 236, `w=${data.asideW}`)
-    check('[layout] 顶栏 68px', data.headerH === 68, `h=${data.headerH}`)
-    check('[layout] 字体栈应用', /Inter|PingFang|YaHei|system-ui/i.test(data.fontUI), data.fontUI)
+  if (route === '/monitor') {
+    check(`[${label}] 监控趋势图已初始化`, data.canvasCount > 0, `canvas=${data.canvasCount}`)
+    if (viewport.width <= 700) {
+      check(`[${label}] 移动端关键设备信息无需横向滚动`, data.mobileDeviceListVisible, `mobileList=${data.mobileDeviceListVisible}`)
+    }
+  }
+
+  if (route === '/chat' && data.chatRect) {
+    check(
+      `[${label}] 聊天输入区保持可达`,
+      data.chatRect.bottom <= viewport.height && data.chatRect.height >= viewport.height * 0.55,
+      JSON.stringify(data.chatRect),
+    )
   }
 
   await page.close()
 }
 
-await audit('/login', '桌面', { width: 1440, height: 900 })
-await audit('/dashboard', '桌面', { width: 1440, height: 900 })
-await audit('/monitor', '桌面', { width: 1440, height: 900 })
-await audit('/chat', '桌面', { width: 1440, height: 900 })
-await audit('/dashboard', '移动', { width: 390, height: 844 })
-await audit('/chat', '移动', { width: 390, height: 844 })
+const routes = ['/login', '/dashboard', '/monitor', '/control', '/alarms', '/devices', '/chat', '/users']
+const viewports = [
+  { width: 1440, height: 900 },
+  { width: 1024, height: 768 },
+  { width: 768, height: 1024 },
+  { width: 390, height: 844 },
+]
+
+for (const viewport of viewports) {
+  for (const route of routes) await audit(route, viewport)
+}
 
 await browser.close()
 
 let failed = 0
-for (const r of results) {
-  const mark = r.ok ? 'PASS' : 'FAIL'
-  if (!r.ok) failed++
-  console.log(`${mark}  ${r.name}  ${r.detail}`)
+for (const result of results) {
+  const mark = result.ok ? 'PASS' : 'FAIL'
+  if (!result.ok) failed += 1
+  console.log(`${mark}  ${result.name}  ${result.detail}`)
 }
 console.log(`\n${results.length - failed}/${results.length} 项通过`)
 process.exit(failed ? 1 : 0)

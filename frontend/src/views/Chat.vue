@@ -1,11 +1,11 @@
 <template>
   <div class="chat-wrap">
-    <div class="panel chat">
+    <section class="panel chat" aria-labelledby="chat-title" :aria-busy="loading">
       <div class="chat-head">
         <div class="chat-title">
           <span class="chat-mark"><el-icon><ReadingLamp /></el-icon></span>
           <div>
-            <div class="name">维护智能助手</div>
+            <h1 id="chat-title" class="name">维护智能助手</h1>
             <div class="sub">维护知识问答 · RAG</div>
           </div>
         </div>
@@ -15,6 +15,7 @@
             size="small"
             class="clear-btn"
             :disabled="loading || messages.length <= 1"
+            aria-label="清空当前对话"
             @click="clearChat"
           >
             <el-icon><Delete /></el-icon>
@@ -26,7 +27,7 @@
         </div>
       </div>
 
-      <div ref="listRef" class="messages">
+      <div ref="listRef" class="messages" role="log" aria-live="polite" aria-relevant="additions">
         <div v-for="(m, i) in messages" :key="i" :class="['msg', m.role]">
           <div v-if="m.role === 'bot'" class="msg-avatar">
             <el-icon><ReadingLamp /></el-icon>
@@ -61,41 +62,54 @@
             v-for="q in suggestions"
             :key="q"
             class="chip"
+            type="button"
             :disabled="loading"
             @click="askQuick(q)"
           >
             {{ q }}
           </button>
         </div>
+        <div v-if="sendError" class="chat-error" role="alert">
+          <el-icon aria-hidden="true"><WarningFilled /></el-icon>
+          <span>{{ sendError }}</span>
+          <button class="inline-action" type="button" :disabled="loading" @click="retry">重新发送</button>
+        </div>
         <div class="input-bar">
+          <label class="sr-only" for="chat-question">维护问题</label>
           <el-input
+            id="chat-question"
             v-model="input"
             type="textarea"
             :autosize="{ minRows: 1, maxRows: 4 }"
             resize="none"
             placeholder="请输入维护问题，例如：路灯离线常见原因？"
-            @keyup.enter.exact.prevent="send"
+            aria-describedby="chat-input-hint"
+            @input="sendError = ''"
+            @keyup.enter.exact.prevent="send()"
           />
-          <el-button
-            type="primary"
-            circle
-            class="send-btn"
-            :loading="loading"
-            :disabled="!input.trim()"
-            @click="send"
-          >
-            <el-icon><Promotion /></el-icon>
-          </el-button>
+          <el-tooltip content="发送问题" placement="top">
+            <el-button
+              type="primary"
+              circle
+              class="send-btn"
+              aria-label="发送问题"
+              :loading="loading"
+              :disabled="!input.trim()"
+              @click="send()"
+            >
+              <el-icon aria-hidden="true"><Promotion /></el-icon>
+            </el-button>
+          </el-tooltip>
         </div>
-        <div class="input-hint">Enter 发送 · Shift+Enter 换行</div>
+        <div id="chat-input-hint" class="input-hint">Enter 发送 · Shift+Enter 换行</div>
       </div>
-    </div>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, nextTick } from 'vue'
-import { ReadingLamp, Document, Promotion, Delete } from '@element-plus/icons-vue'
+import { Delete, Document, Promotion, ReadingLamp, WarningFilled } from '@element-plus/icons-vue'
 import { ask } from '../api/agent'
 import type { Source } from '../api/agent'
 
@@ -111,6 +125,8 @@ const messages = ref<Msg[]>([
 const input = ref('')
 const loading = ref(false)
 const listRef = ref<HTMLDivElement>()
+const sendError = ref('')
+const failedQuestion = ref('')
 
 const suggestions = [
   '路灯离线常见原因？',
@@ -128,6 +144,13 @@ function clearChat() {
   messages.value = [
     { role: 'bot', content: '您好，我是路灯维护助手，可以协助您排查故障、查询维护知识。' },
   ]
+  sendError.value = ''
+  failedQuestion.value = ''
+}
+
+function retry() {
+  if (!failedQuestion.value || loading.value) return
+  send(true)
 }
 
 async function scrollBottom() {
@@ -135,18 +158,23 @@ async function scrollBottom() {
   if (listRef.value) listRef.value.scrollTop = listRef.value.scrollHeight
 }
 
-async function send() {
-  const q = input.value.trim()
+async function send(retrying = false) {
+  const q = retrying ? failedQuestion.value : input.value.trim()
   if (!q || loading.value) return
-  messages.value.push({ role: 'user', content: q })
-  input.value = ''
+  if (!retrying) {
+    messages.value.push({ role: 'user', content: q })
+    input.value = ''
+  }
   loading.value = true
+  sendError.value = ''
+  failedQuestion.value = q
   scrollBottom()
   try {
     const r = await ask(q)
     messages.value.push({ role: 'bot', content: r.answer, sources: r.sources })
+    failedQuestion.value = ''
   } catch {
-    // 错误已由拦截器提示
+    sendError.value = '问题发送失败，请检查服务连接后重试。'
   } finally {
     loading.value = false
     scrollBottom()
@@ -161,8 +189,9 @@ async function send() {
 }
 .chat {
   width: 100%;
-  max-width: 820px;
-  height: calc(100vh - 124px);
+  max-width: 960px;
+  height: calc(100dvh - var(--header-height) - 42px);
+  min-height: 520px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -199,15 +228,16 @@ async function send() {
   height: 36px;
   display: grid;
   place-items: center;
-  border-radius: 10px;
+  border-radius: 3px;
   background: var(--accent-dim);
-  border: 1px solid rgba(223, 179, 79, 0.22);
+  border: 1px solid rgba(250, 152, 25, 0.28);
   color: var(--accent-bright);
 }
 .chat-mark :deep(.el-icon) {
   font-size: 18px;
 }
 .name {
+  margin: 0;
   font-size: 14.5px;
   font-weight: 600;
   color: var(--text-primary);
@@ -240,7 +270,7 @@ async function send() {
   height: 30px;
   display: grid;
   place-items: center;
-  border-radius: 9px;
+  border-radius: 3px;
   background: var(--accent-dim);
   color: var(--accent-bright);
   flex: none;
@@ -253,13 +283,13 @@ async function send() {
 .msg-body {
   max-width: 78%;
   padding: 12px 16px;
-  border-radius: 14px;
+  border-radius: 5px;
   line-height: 1.7;
   font-size: 14px;
 }
 .msg.user .msg-body {
-  background: rgba(223, 179, 79, 0.13);
-  border: 1px solid rgba(223, 179, 79, 0.2);
+  background: var(--accent-dim);
+  border: 1px solid rgba(250, 152, 25, 0.24);
   color: var(--text-primary);
   border-bottom-right-radius: 5px;
 }
@@ -295,8 +325,8 @@ async function send() {
   font-size: 12.5px;
   color: var(--text-secondary);
   padding: 6px 10px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.03);
+  border-radius: 3px;
+  background: var(--bg-surface-2);
   border: 1px solid var(--border-subtle);
 }
 .src-icon {
@@ -358,6 +388,27 @@ async function send() {
   border-top: 1px solid var(--border-subtle);
   padding: 14px 20px 12px;
 }
+.chat-error {
+  min-height: 36px;
+  margin-bottom: 10px;
+  padding: 6px 8px 6px 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid rgba(180, 35, 24, .24);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  background: var(--danger-dim);
+  font-size: 12px;
+}
+.chat-error .el-icon {
+  flex: none;
+  color: var(--danger);
+}
+.chat-error span {
+  min-width: 0;
+  flex: 1;
+}
 .suggest {
   display: flex;
   align-items: center;
@@ -378,12 +429,12 @@ async function send() {
   font-size: 12px;
   line-height: 1;
   padding: 6px 11px;
-  border-radius: 999px;
+  border-radius: 3px;
   cursor: pointer;
   transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
 .chip:hover:not(:disabled) {
-  border-color: rgba(223, 179, 79, 0.4);
+  border-color: rgba(250, 152, 25, 0.42);
   color: var(--accent-bright);
   background: var(--accent-dim);
 }
@@ -397,7 +448,7 @@ async function send() {
   gap: 10px;
 }
 .input-bar :deep(.el-textarea__inner) {
-  border-radius: 12px;
+  border-radius: 4px;
   padding: 10px 14px;
   line-height: 1.6;
 }
@@ -416,5 +467,48 @@ async function send() {
   color: var(--text-muted);
   text-align: right;
   user-select: none;
+}
+
+@media (max-width: 900px) {
+  .chat {
+    height: calc(100dvh - 90px);
+  }
+}
+
+@media (max-width: 600px) {
+  .chat {
+    min-height: 0;
+    border-radius: var(--radius-md);
+  }
+  .chat-head {
+    padding: 12px 13px;
+  }
+  .clear-btn span {
+    display: none;
+  }
+  .messages {
+    padding: 18px 13px;
+    gap: 15px;
+  }
+  .msg-body {
+    max-width: 88%;
+    padding: 10px 12px;
+  }
+  .input-zone {
+    padding: 11px 12px 9px;
+  }
+  .suggest {
+    max-height: 76px;
+    overflow-y: auto;
+  }
+  .input-hint {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .typing i {
+    animation: none;
+  }
 }
 </style>

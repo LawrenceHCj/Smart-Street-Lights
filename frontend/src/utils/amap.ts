@@ -1,4 +1,4 @@
-type AMapApi = any
+type AMapApi = unknown
 
 declare global {
   interface Window {
@@ -23,6 +23,9 @@ export function loadAMap(): Promise<AMapApi> {
     script.onload = () => window.AMap ? resolve(window.AMap) : reject(new Error('高德地图 SDK 加载失败'))
     script.onerror = () => reject(new Error('无法连接高德地图服务'))
     document.head.appendChild(script)
+  }).catch((error) => {
+    loading = null
+    throw error
   })
   return loading
 }

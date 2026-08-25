@@ -24,6 +24,11 @@ public class Device {
     private String lampStatus = "OFF";
     private String status;
     private Double latestLux;
+    private Double latestTemperature;
+    private Double latestVoltage;
+    private Double latestCurrent;
+    private Double latestPower;
+    private Double latestEnergy;
     private Long lastSeen;
     private LocalDateTime createdAt;
 }

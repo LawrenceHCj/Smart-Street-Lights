@@ -23,9 +23,9 @@ public class ConfigController {
     // PUT /api/config/linkage
     @PutMapping("/linkage")
     public ApiResponse<Void> saveLinkageConfig(@RequestBody LinkageConfigDTO config) {
-        // 简单校验阈值范围 0-500（前端已约束，这里再防一手）
-        if (config.getThreshold() < 0 || config.getThreshold() > 500) {
-            return ApiResponse.error(400, "阈值必须在 0-500 之间");
+        if (config.getThreshold() < 0 || config.getThreshold() > 10000
+                || config.getHysteresis() < 1 || config.getHysteresis() > 1000) {
+            return ApiResponse.error(400, "开灯阈值需为 0–10000 Lux，滞回值需为 1–1000 Lux");
         }
         configService.saveLinkageConfig(config);
         return ApiResponse.success(null);

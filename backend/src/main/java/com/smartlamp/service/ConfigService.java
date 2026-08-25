@@ -3,6 +3,8 @@ package com.smartlamp.service;
 import com.smartlamp.dto.LinkageConfigDTO;
 import com.smartlamp.dto.SystemConfigDTO;
 import com.smartlamp.entity.SystemConfig;
+import com.smartlamp.entity.Device;
+import com.smartlamp.repository.DeviceRepository;
 import com.smartlamp.repository.SystemConfigRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -13,6 +15,12 @@ public class ConfigService {
     @Autowired
     private SystemConfigRepository repository;
 
+    @Autowired
+    private DeviceRepository deviceRepository;
+
+    @Autowired
+    private MqttPublisherService mqttPublisherService;
+
     private SystemConfig config() {
         return repository.findById(1L).orElseGet(() -> repository.save(new SystemConfig()));
     }
@@ -22,6 +30,7 @@ public class ConfigService {
         LinkageConfigDTO dto = new LinkageConfigDTO();
         dto.setEnabled(config.isAutoControl());
         dto.setThreshold(config.getLuxThreshold());
+        dto.setHysteresis(config.getHysteresis());
         return dto;
     }
 
@@ -29,7 +38,22 @@ public class ConfigService {
         SystemConfig config = config();
         config.setAutoControl(newConfig.isEnabled());
         config.setLuxThreshold(newConfig.getThreshold());
+        config.setHysteresis(newConfig.getHysteresis());
         repository.save(config);
+        publishLinkageConfig(newConfig);
+    }
+
+    private void publishLinkageConfig(LinkageConfigDTO config) {
+        int offLux = config.getThreshold() + config.getHysteresis();
+        for (Device device : deviceRepository.findAll()) {
+            if (!Boolean.TRUE.equals(device.getBound())) continue;
+            String deviceId = device.getCode();
+            String payload = "{\"deviceId\":\"" + deviceId
+                    + "\",\"auto\":" + config.isEnabled()
+                    + ",\"onLux\":" + config.getThreshold()
+                    + ",\"offLux\":" + offLux + "}";
+            mqttPublisherService.publish("device/" + deviceId + "/cmd", payload);
+        }
     }
 
     public SystemConfigDTO getConfig() {
@@ -49,5 +73,11 @@ public class ConfigService {
         config.setHysteresis(dto.getHysteresis());
         config.setHeartbeatTimeoutMs(dto.getHeartbeatTimeoutMs());
         repository.save(config);
+
+        LinkageConfigDTO linkage = new LinkageConfigDTO();
+        linkage.setEnabled(dto.isAutoControl());
+        linkage.setThreshold(dto.getLuxThreshold());
+        linkage.setHysteresis(dto.getHysteresis());
+        publishLinkageConfig(linkage);
     }
 }

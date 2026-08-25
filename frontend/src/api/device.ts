@@ -1,4 +1,5 @@
 import request from './request'
+import type { AxiosRequestConfig } from 'axios'
 
 export interface DeviceVO {
   id: number
@@ -34,18 +35,18 @@ export interface CurrentLight {
   ts: number | null
 }
 
-export function listDevices(): Promise<DeviceVO[]> {
-  return request.get('/devices')
+export function listDevices(config?: AxiosRequestConfig): Promise<DeviceVO[]> {
+  return request.get('/devices', config)
 }
 
-export function getOverview(): Promise<DashboardOverview> {
-  return request.get('/dashboard/overview')
+export function getOverview(config?: AxiosRequestConfig): Promise<DashboardOverview> {
+  return request.get('/dashboard/overview', config)
 }
 
-export function getHistory(deviceId: string, start: number, end: number): Promise<HistoryVO> {
-  return request.get('/light/history', { params: { deviceId, start, end } })
+export function getHistory(deviceId: string, start: number, end: number, config?: AxiosRequestConfig): Promise<HistoryVO> {
+  return request.get('/light/history', { ...config, params: { ...config?.params, deviceId, start, end } })
 }
 
-export function getCurrentLight(deviceId: string): Promise<CurrentLight> {
-  return request.get(`/devices/${deviceId}/light`)
+export function getCurrentLight(deviceId: string, config?: AxiosRequestConfig): Promise<CurrentLight> {
+  return request.get(`/devices/${deviceId}/light`, config)
 }

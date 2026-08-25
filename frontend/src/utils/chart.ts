@@ -1,13 +1,26 @@
 import type { EChartsOption } from 'echarts'
+import { LineChart } from 'echarts/charts'
+import { AriaComponent, GraphicComponent, GridComponent, TooltipComponent } from 'echarts/components'
+import { init, use } from 'echarts/core'
+import type { ECharts } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
 
-/** 图表深色令牌（与 index.css 的暖调炭黑 / 路灯金对齐） */
+use([LineChart, AriaComponent, GraphicComponent, GridComponent, TooltipComponent, CanvasRenderer])
+
+export type ChartInstance = ECharts
+
+export function initLuxChart(element: HTMLDivElement): ChartInstance {
+  return init(element, undefined, { renderer: 'canvas' })
+}
+
+/** 图表品牌令牌（与 Straightforward 海军蓝 / 橙色体系对齐） */
 export const chartColors = {
-  text: '#a8bad2',
-  muted: '#7288a4',
-  axis: 'rgba(137, 170, 207, 0.2)',
-  split: 'rgba(137, 170, 207, 0.1)',
-  accent: '#f1b94e',
-  accentBright: '#ffd47b',
+  text: '#1e3d59',
+  muted: '#48749e',
+  axis: 'rgba(30, 61, 89, 0.24)',
+  split: 'rgba(30, 61, 89, 0.1)',
+  accent: '#fa9819',
+  accentBright: '#cd4900',
 }
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -21,28 +34,36 @@ function axisLabel(ts: number): string {
   return sameDay ? hm : `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${hm}`
 }
 
-/** 光照趋势折线：暖调炭黑网格 + 金色折线 + 渐变面积。times 为毫秒时间戳。 */
+/** 光照趋势折线：轻量蓝灰网格 + 橙色折线 + 克制面积。times 为毫秒时间戳。 */
 export function luxLineOption(times: number[], values: number[]): EChartsOption {
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   return {
+    animation: !reducedMotion,
+    aria: {
+      enabled: true,
+      description: times.length
+        ? `光照趋势图，共 ${times.length} 个数据点。`
+        : '光照趋势图，当前暂无数据。',
+    },
     grid: { left: 48, right: 20, top: 30, bottom: 36 },
     tooltip: {
       trigger: 'axis',
-      backgroundColor: '#102338',
-      borderColor: 'rgba(137, 170, 207, 0.22)',
+      backgroundColor: '#1e3d59',
+      borderColor: 'rgba(255, 255, 255, 0.18)',
       borderWidth: 1,
       padding: [10, 14],
-      textStyle: { color: '#edf5ff', fontSize: 12 },
+      textStyle: { color: '#ffffff', fontSize: 12 },
       axisPointer: {
-        lineStyle: { color: 'rgba(255, 255, 255, 0.18)' },
-        shadowStyle: { color: 'rgba(241, 185, 78, 0.06)' },
+        lineStyle: { color: 'rgba(255, 255, 255, 0.28)' },
+        shadowStyle: { color: 'rgba(250, 152, 25, 0.08)' },
       },
       formatter: (params: unknown) => {
-        const items = params as Array<{ axisValue: number; value: number }>
+        const items = params as Array<{ axisValue: number; value: [number, number] }>
         if (!items.length) return ''
         const d = new Date(items[0].axisValue)
         const stamp = `${pad(d.getFullYear())}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-        const lux = items[0].value
-        return `<div style="font-family:ui-monospace,monospace;color:#7288a4;font-size:11px;margin-bottom:4px">${stamp}</div><div style="color:#ffd47b;font-weight:600">${lux} Lux</div>`
+        const lux = items[0].value[1]
+        return `<div style="font-family:ui-monospace,monospace;color:#b6c9cf;font-size:11px;margin-bottom:4px">${stamp}</div><div style="color:#ffffff;font-weight:600">${lux} Lux</div>`
       },
     },
     xAxis: {
@@ -75,8 +96,8 @@ export function luxLineOption(times: number[], values: number[]): EChartsOption 
         lineStyle: {
           color: chartColors.accent,
           width: 2,
-          shadowColor: 'rgba(241, 185, 78, 0.35)',
-          shadowBlur: 8,
+          shadowColor: 'rgba(250, 152, 25, 0.22)',
+          shadowBlur: 5,
         },
         itemStyle: { color: chartColors.accent },
         areaStyle: {
@@ -87,12 +108,25 @@ export function luxLineOption(times: number[], values: number[]): EChartsOption 
             x2: 0,
             y2: 1,
             colorStops: [
-              { offset: 0, color: 'rgba(241, 185, 78, 0.24)' },
-              { offset: 1, color: 'rgba(223, 179, 79, 0)' },
+              { offset: 0, color: 'rgba(250, 152, 25, 0.2)' },
+              { offset: 1, color: 'rgba(250, 152, 25, 0)' },
             ],
           },
         },
       },
     ],
+    graphic: times.length
+      ? undefined
+      : {
+          type: 'text',
+          left: 'center',
+          top: 'middle',
+          silent: true,
+          style: {
+            text: '暂无趋势数据',
+            fill: chartColors.muted,
+            font: '12px Inter, sans-serif',
+          },
+        },
   }
 }

@@ -1,88 +1,39 @@
 package com.smartlamp.mqtt;
 
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
-import com.smartlamp.entity.Device;
-import com.smartlamp.entity.LightPoint;
-import com.smartlamp.repository.DeviceRepository;
-import com.smartlamp.repository.LightPointRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.smartlamp.service.MqttDeadLetterService;
+import com.smartlamp.service.MqttIngestionService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.integration.annotation.ServiceActivator;
 import org.springframework.messaging.Message;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDateTime;
-
 @Component
 public class MqttMessageListener {
+    private static final Logger log = LoggerFactory.getLogger(MqttMessageListener.class);
 
-    @Autowired
-    private DeviceRepository deviceRepository;
+    private final MqttIngestionService ingestionService;
+    private final MqttDeadLetterService deadLetterService;
 
-    @Autowired
-    private LightPointRepository lightPointRepository;
-
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    public MqttMessageListener(MqttIngestionService ingestionService, MqttDeadLetterService deadLetterService) {
+        this.ingestionService = ingestionService;
+        this.deadLetterService = deadLetterService;
+    }
 
     @ServiceActivator(inputChannel = "mqttInputChannel")
     public void handleMessage(Message<?> message) {
         String topic = (String) message.getHeaders().get("mqtt_receivedTopic");
-        String payload = (String) message.getPayload();
-        System.out.println("收到 MQTT 消息，主题: " + topic + ", 内容: " + payload);
-
+        String payload = String.valueOf(message.getPayload());
         try {
-            JsonNode json = objectMapper.readTree(payload);
-            String deviceId = json.has("deviceId") ? json.get("deviceId").asText() : extractDeviceId(topic);
-            if (deviceId == null) return;
-
-            if (topic.endsWith("/data")) {
-                double lux = json.get("lux").asDouble();
-                long ts = json.has("ts") ? json.get("ts").asLong() : System.currentTimeMillis();
-
-                Device device = deviceRepository.findByCode(deviceId).orElse(null);
-                if (device == null) {
-                    device = new Device();
-                    device.setCode(deviceId);
-                    device.setLocation("未知位置");
-                    device.setStatus("ONLINE");
-                    device.setCreatedAt(LocalDateTime.now());
-                }
-                device.setLatestLux(lux);
-                device.setLastSeen(ts);
-                device.setStatus("ONLINE");
-                deviceRepository.save(device);
-
-                LightPoint point = new LightPoint();
-                point.setDeviceCode(deviceId);
-                point.setLux(lux);
-                point.setTs(ts);
-                point.setCreatedAt(LocalDateTime.now());
-                lightPointRepository.save(point);
-
-            } else if (topic.endsWith("/heartbeat")) {
-                long ts = json.has("ts") ? json.get("ts").asLong() : System.currentTimeMillis();
-                Device device = deviceRepository.findByCode(deviceId).orElse(null);
-                if (device == null) {
-                    device = new Device();
-                    device.setCode(deviceId);
-                    device.setLocation("未知位置");
-                    device.setStatus("ONLINE");
-                    device.setCreatedAt(LocalDateTime.now());
-                }
-                device.setLastSeen(ts);
-                device.setStatus("ONLINE");
-                deviceRepository.save(device);
+            ingestionService.ingest(topic, payload);
+            log.debug("MQTT message persisted: topic={}", topic);
+        } catch (Exception error) {
+            log.warn("MQTT message rejected and stored as dead letter: topic={}, reason={}", topic, error.getMessage());
+            try {
+                deadLetterService.record(topic, payload, error);
+            } catch (Exception deadLetterError) {
+                log.error("Unable to persist MQTT dead letter: topic={}", topic, deadLetterError);
             }
-        } catch (Exception e) {
-            System.err.println("处理 MQTT 消息失败: " + e.getMessage());
         }
-    }
-
-    private String extractDeviceId(String topic) {
-        String[] parts = topic.split("/");
-        if (parts.length >= 2) {
-            return parts[1];
-        }
-        return null;
     }
 }

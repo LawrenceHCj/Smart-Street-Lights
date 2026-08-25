@@ -1,13 +1,54 @@
 import { createApp } from 'vue'
-import ElementPlus from 'element-plus'
+import {
+  ElButton,
+  ElDialog,
+  ElForm,
+  ElFormItem,
+  ElIcon,
+  ElInput,
+  ElInputNumber,
+  ElLoadingDirective,
+  ElOption,
+  ElRadioButton,
+  ElRadioGroup,
+  ElSelect,
+  ElSwitch,
+  ElTable,
+  ElTableColumn,
+  ElTooltip,
+} from 'element-plus'
 import '@fontsource-variable/inter'
 import 'element-plus/dist/index.css'
-import 'element-plus/theme-chalk/dark/css-vars.css'
 import './styles/index.css'
 import App from './App.vue'
 import router from './router'
 
-// 深色控制台：全局启用 Element Plus 深色主题
-document.documentElement.classList.add('dark')
+// Straightforward 品牌主题：浅色工作面与高对比度海军蓝结构层。
+document.documentElement.classList.add('brand-theme')
 
-createApp(App).use(router).use(ElementPlus).mount('#app')
+const app = createApp(App)
+
+const elementComponents = [
+  ElButton,
+  ElDialog,
+  ElForm,
+  ElFormItem,
+  ElIcon,
+  ElInput,
+  ElInputNumber,
+  ElOption,
+  ElRadioButton,
+  ElRadioGroup,
+  ElSelect,
+  ElSwitch,
+  ElTable,
+  ElTableColumn,
+  ElTooltip,
+]
+
+for (const component of elementComponents) {
+  if (component.name) app.component(component.name, component)
+}
+
+app.directive('loading', ElLoadingDirective)
+app.use(router).mount('#app')

@@ -9,6 +9,7 @@ import request from './request'
 export interface LinkageConfig {
   enabled: boolean
   threshold: number
+  hysteresis: number
 }
 
 /** 手动远程开关灯 F-06：POST /api/devices/{deviceId}/switch */

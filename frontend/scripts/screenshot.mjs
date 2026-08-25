@@ -2,7 +2,7 @@ import puppeteer from 'puppeteer-core'
 import { mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-const BASE = 'http://localhost:5173'
+const BASE = process.env.QA_BASE || 'http://127.0.0.1:5173'
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'
 const OUT = fileURLToPath(new URL('../.impeccable/review/', import.meta.url))
 mkdirSync(OUT, { recursive: true })
@@ -13,35 +13,65 @@ const browser = await puppeteer.launch({
   args: ['--no-sandbox', '--disable-gpu', '--force-device-scale-factor=1'],
 })
 
-async function shot(name, route, { width, height, auth = true, fullPage = true, wait = 2200 }) {
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
+async function getQaToken() {
+  try {
+    const response = await fetch(`${BASE}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'admin', password: '123456' }),
+    })
+    const payload = await response.json()
+    if (payload?.code === 0 && payload?.data?.token) return payload.data.token
+  } catch {
+    // 后端不可用时仍截图前端的可恢复错误态。
+  }
+  return 'demo-token'
+}
+
+const qaToken = await getQaToken()
+
+async function capture({ name, route, width, height, auth = true, waitMs = 1000 }) {
   const page = await browser.newPage()
   await page.setViewport({ width, height, deviceScaleFactor: 1 })
-  // 注入 token 绕过登录守卫（demo 后端不校验 JWT）
   if (auth) {
-    await page.goto(`${BASE}/login`, { waitUntil: 'networkidle2' })
-    await page.evaluate(() => localStorage.setItem('token', 'demo-token'))
+    await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' })
+    await page.evaluate((token) => localStorage.setItem('token', token), qaToken)
   }
-  await page.goto(`${BASE}${route}`, { waitUntil: 'networkidle2' })
-  await new Promise((r) => setTimeout(r, wait))
-  // 滚动到底部再回顶，确保懒渲染区域稳定
-  await page.evaluate(async () => {
-    window.scrollTo(0, document.body.scrollHeight)
-    await new Promise((r) => setTimeout(r, 150))
-    window.scrollTo(0, 0)
+  await page.goto(`${BASE}${route}`, { waitUntil: 'domcontentloaded' })
+  await wait(waitMs)
+  await page.evaluate(() => {
+    const main = document.querySelector('.main')
+    if (main) main.scrollTop = 0
   })
-  await page.screenshot({ path: `${OUT}${name}.png`, fullPage })
+  await page.screenshot({ path: `${OUT}${name}.png`, fullPage: false })
   await page.close()
   console.log('captured', name, `${width}x${height}`)
 }
 
-// 桌面
-await shot('login', '/login', { width: 1440, height: 900, auth: false })
-await shot('dashboard', '/dashboard', { width: 1440, height: 900 })
-await shot('monitor', '/monitor', { width: 1440, height: 900 })
-await shot('chat', '/chat', { width: 1440, height: 900 })
-// 移动
-await shot('dashboard-mobile', '/dashboard', { width: 390, height: 844 })
-await shot('chat-mobile', '/chat', { width: 390, height: 844 })
+const primaryRoutes = [
+  ['login', '/login', false],
+  ['dashboard', '/dashboard', true],
+  ['monitor', '/monitor', true],
+  ['control', '/control', true],
+  ['alarms', '/alarms', true],
+  ['devices', '/devices', true],
+  ['chat', '/chat', true],
+  ['users', '/users', true],
+]
+
+for (const [name, route, auth] of primaryRoutes) {
+  const waitMs = name === 'dashboard' ? 2200 : name === 'monitor' ? 1300 : 900
+  await capture({ name: `${name}-1440`, route, auth, width: 1440, height: 900, waitMs })
+  await capture({ name: `${name}-390`, route, auth, width: 390, height: 844, waitMs })
+}
+
+for (const [name, route] of [['dashboard', '/dashboard'], ['monitor', '/monitor'], ['chat', '/chat']]) {
+  const waitMs = name === 'dashboard' ? 2200 : name === 'monitor' ? 1300 : 900
+  await capture({ name: `${name}-1024`, route, width: 1024, height: 768, waitMs })
+  await capture({ name: `${name}-768`, route, width: 768, height: 1024, waitMs })
+}
 
 await browser.close()
 console.log('done →', OUT)

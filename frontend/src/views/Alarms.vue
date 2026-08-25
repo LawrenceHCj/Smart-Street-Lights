@@ -1,9 +1,9 @@
 <template>
-  <div class="alarms">
+  <div class="workspace-page alarms">
     <div class="page-intro">
       <div>
-        <h2 class="page-title">告警管理</h2>
-        <p class="page-desc">设备离线告警通知与历史告警记录追溯</p>
+        <h1 class="page-title">告警中心</h1>
+        <p class="page-desc">集中扫描未处理事件并追溯历史处置记录</p>
       </div>
       <div class="refresh">
         <span class="status-dot idle"></span>
@@ -80,7 +80,7 @@
               </span>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="110" align="right">
+          <el-table-column label="操作" width="110" align="right" fixed="right">
             <template #default="{ row }">
               <el-button
                 v-if="row.status === 'OPEN'"
@@ -97,7 +97,7 @@
           </el-table-column>
           <template #empty>
             <div class="table-empty">
-              {{ ready ? '暂无告警记录' : '暂无数据 —— 告警接口就绪后自动加载' }}
+              {{ ready ? '暂无告警记录' : '告警服务暂不可用' }}
             </div>
           </template>
         </el-table>
@@ -180,7 +180,7 @@ onUnmounted(() => {
 .alarms {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
 
 .page-intro {
@@ -191,9 +191,9 @@ onUnmounted(() => {
 }
 .page-title {
   margin: 0;
-  font-size: 20px;
-  font-weight: 650;
-  letter-spacing: 0.01em;
+  font-size: 24px;
+  font-weight: 680;
+  letter-spacing: -0.025em;
   color: var(--text-primary);
 }
 .page-desc {
@@ -230,21 +230,21 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   padding: 2px 10px;
-  border-radius: 999px;
+  border-radius: 3px;
   font-size: 12px;
   font-weight: 500;
 }
 .level-pill.info {
   color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--info-dim);
 }
 .level-pill.warning {
   color: var(--warn);
-  background: rgba(242, 148, 58, 0.12);
+  background: var(--warn-dim);
 }
 .level-pill.critical {
   color: var(--danger);
-  background: rgba(226, 98, 90, 0.12);
+  background: var(--danger-dim);
 }
 .acked-note {
   font-size: 12px;
