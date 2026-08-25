@@ -5,11 +5,15 @@ import com.smartlamp.agent.LlmClient;
 import com.smartlamp.agent.LlmException;
 import com.smartlamp.agent.PromptProvider;
 import com.smartlamp.agent.Retriever;
+import com.smartlamp.agent.actions.ActionManager;
+import com.smartlamp.agent.conversation.AgentMessage;
+import com.smartlamp.agent.tools.AgentActionTools;
 import com.smartlamp.agent.tools.AgentTools;
 import com.smartlamp.agent.tools.ToolCatalog;
 import com.smartlamp.dto.AskResponse;
 import com.smartlamp.dto.DeviceDTO;
 import com.smartlamp.entity.Alarm;
+import com.smartlamp.entity.Device;
 import com.smartlamp.exception.BadRequestException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,12 +24,14 @@ import org.springframework.test.util.ReflectionTestUtils;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ObjectNode;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import tools.jackson.databind.node.ArrayNode;
@@ -60,9 +66,14 @@ class AgentServiceTest {
         ReflectionTestUtils.setField(agentTools, "alarmService", alarmService);
         ReflectionTestUtils.setField(agentTools, "configService", configService);
 
+        AgentActionTools agentActionTools = new AgentActionTools();
+        ReflectionTestUtils.setField(agentActionTools, "deviceService", deviceService);
+        ReflectionTestUtils.setField(agentActionTools, "actionManager", new ActionManager());
+
         ToolCatalog toolCatalog = new ToolCatalog();
         ReflectionTestUtils.setField(toolCatalog, "agentTools", agentTools);
         ReflectionTestUtils.setField(toolCatalog, "retriever", retriever);
+        ReflectionTestUtils.setField(toolCatalog, "agentActionTools", agentActionTools);
 
         agentService = new AgentService();
         ReflectionTestUtils.setField(agentService, "retriever", retriever);
@@ -271,6 +282,172 @@ class AgentServiceTest {
                 .findFirst().orElseThrow();
         assertThat(toolMessage.path("content").asText()).contains("system_data");
         assertThat(toolMessage.path("content").asText()).contains("lamp001");
+    }
+
+    // ============ 阶段16：控制意图 → 待确认 Action（绝不执行控制） ============
+
+    private Device onlineDevice(String code, String lampStatus) {
+        Device device = new Device();
+        device.setCode(code);
+        device.setStatus("ONLINE");
+        device.setLampStatus(lampStatus);
+        return device;
+    }
+
+    @Test
+    void 关闭lamp001生成待确认Action并请求用户确认() throws Exception {
+        when(llmClient.isConfigured()).thenReturn(true);
+        when(deviceService.getDeviceByCode("lamp001")).thenReturn(onlineDevice("lamp001", "ON"));
+        when(llmClient.completeChat(anyList(), any(ArrayNode.class)))
+                .thenReturn(responseWithToolCalls(toolCall("call-1", "turn_off_light", "{\"deviceCode\":\"lamp001\"}")))
+                .thenReturn(response("已生成关闭 lamp001 的待确认操作请求：设备当前在线、灯处于开启状态。请回复\"确认\"以执行该操作。"));
+
+        AskResponse result = agentService.ask("帮我关闭 lamp001");
+
+        assertThat(result.getAnswer()).contains("确认");
+        assertThat(result.getSources()).anyMatch(s -> "action".equals(s.getSection()) && s.getTitle().contains("关灯"));
+        // 安全红线：未调用任何控制写方法
+        verify(deviceService, never()).updateLampStatus(any(), any());
+    }
+
+    @Test
+    void 打开lamp001生成待确认Action() throws Exception {
+        when(llmClient.isConfigured()).thenReturn(true);
+        when(deviceService.getDeviceByCode("lamp001")).thenReturn(onlineDevice("lamp001", "OFF"));
+        when(llmClient.completeChat(anyList(), any(ArrayNode.class)))
+                .thenReturn(responseWithToolCalls(toolCall("call-1", "turn_on_light", "{\"deviceCode\":\"lamp001\"}")))
+                .thenReturn(response("已生成打开 lamp001 的待确认操作请求：设备当前在线、灯处于关闭状态。请回复\"确认\"以执行。"));
+
+        AskResponse result = agentService.ask("帮我打开 lamp001");
+
+        assertThat(result.getAnswer()).contains("确认");
+        assertThat(result.getSources()).anyMatch(s -> "action".equals(s.getSection()));
+        verify(deviceService, never()).updateLampStatus(any(), any());
+    }
+
+    @Test
+    void 控制不存在的设备时如实告知且不创建操作请求() throws Exception {
+        when(llmClient.isConfigured()).thenReturn(true);
+        when(deviceService.getDeviceByCode("lamp999")).thenReturn(null);
+        when(llmClient.completeChat(anyList(), any(ArrayNode.class)))
+                .thenReturn(responseWithToolCalls(toolCall("call-1", "turn_off_light", "{\"deviceCode\":\"lamp999\"}")))
+                .thenReturn(response("系统检查结果：设备 lamp999 不存在，未创建任何操作请求，请核对设备编号。"));
+
+        AskResponse result = agentService.ask("帮我关闭 lamp999");
+
+        assertThat(result.getAnswer()).contains("不存在");
+        verify(deviceService, never()).updateLampStatus(any(), any());
+    }
+
+    @Test
+    void 控制离线设备时如实告知不继续() throws Exception {
+        when(llmClient.isConfigured()).thenReturn(true);
+        Device device = onlineDevice("lamp003", "OFF");
+        device.setStatus("OFFLINE");
+        when(deviceService.getDeviceByCode("lamp003")).thenReturn(device);
+        when(llmClient.completeChat(anyList(), any(ArrayNode.class)))
+                .thenReturn(responseWithToolCalls(toolCall("call-1", "turn_off_light", "{\"deviceCode\":\"lamp003\"}")))
+                .thenReturn(response("系统检查结果：lamp003 当前处于离线状态，默认不继续控制操作，请先排查离线原因。"));
+
+        AskResponse result = agentService.ask("帮我关闭 lamp003");
+
+        assertThat(result.getAnswer()).contains("离线");
+        verify(deviceService, never()).updateLampStatus(any(), any());
+    }
+
+    // ============ 阶段27：历史消息注入 ============
+
+    private AgentMessage historyMessage(String role, String content) {
+        AgentMessage message = new AgentMessage();
+        message.setMessageId(java.util.UUID.randomUUID().toString());
+        message.setRole(role);
+        message.setContent(content);
+        message.setCreatedAt(LocalDateTime.of(2026, 8, 25, 10, 0));
+        return message;
+    }
+
+    @Test
+    void 历史消息注入LLM且顺序为system历史当前问题() throws Exception {
+        when(llmClient.isConfigured()).thenReturn(true);
+        when(llmClient.completeChat(anyList(), any(ArrayNode.class)))
+                .thenReturn(response("它指 lamp001"));
+
+        List<AgentMessage> history = List.of(
+                historyMessage("user", "lamp001 现在什么状态？"),
+                historyMessage("assistant", "lamp001 在线"));
+
+        agentService.ask("它最近有告警吗？", history);
+
+        org.mockito.ArgumentCaptor<List<ObjectNode>> captor = org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(llmClient).completeChat(captor.capture(), any(ArrayNode.class));
+        List<ObjectNode> messages = captor.getValue();
+
+        assertThat(messages).hasSize(4);
+        assertThat(messages.get(0).path("role").asText()).isEqualTo("system");
+        assertThat(messages.get(1).path("role").asText()).isEqualTo("user");
+        assertThat(messages.get(1).path("content").asText())
+                .contains("历史消息").contains("lamp001 现在什么状态？");
+        assertThat(messages.get(2).path("role").asText()).isEqualTo("assistant");
+        assertThat(messages.get(2).path("content").asText())
+                .contains("历史消息").contains("lamp001 在线");
+        assertThat(messages.get(3).path("role").asText()).isEqualTo("user");
+        assertThat(messages.get(3).path("content").asText())
+                .contains("【用户问题】").contains("它最近有告警吗？");
+    }
+
+    @Test
+    void 单轮调用不注入任何历史消息() throws Exception {
+        when(llmClient.isConfigured()).thenReturn(true);
+        when(llmClient.completeChat(anyList(), any(ArrayNode.class)))
+                .thenReturn(response("直接回答"));
+
+        agentService.ask("路灯维护要注意什么？");
+
+        org.mockito.ArgumentCaptor<List<ObjectNode>> captor = org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(llmClient).completeChat(captor.capture(), any(ArrayNode.class));
+        List<ObjectNode> messages = captor.getValue();
+        assertThat(messages).hasSize(2);
+        assertThat(messages.get(0).path("role").asText()).isEqualTo("system");
+        assertThat(messages.get(1).path("content").asText()).contains("【用户问题】");
+    }
+
+    // ============ 阶段28：对话摘要注入 ============
+
+    @Test
+    void 对话摘要注入在system之后历史之前() throws Exception {
+        when(llmClient.isConfigured()).thenReturn(true);
+        when(llmClient.completeChat(anyList(), any(ArrayNode.class)))
+                .thenReturn(response("回答"));
+
+        agentService.ask("继续分析", List.of(), "用户此前讨论过 lamp001 的离线问题");
+
+        org.mockito.ArgumentCaptor<List<ObjectNode>> captor = org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(llmClient).completeChat(captor.capture(), any(ArrayNode.class));
+        List<ObjectNode> messages = captor.getValue();
+
+        assertThat(messages).hasSize(3);
+        assertThat(messages.get(0).path("role").asText()).isEqualTo("system");
+        assertThat(messages.get(0).path("content").asText()).contains("智慧路灯维护助手");
+        // 摘要作为独立 system 消息，紧跟主 System Prompt 之后、当前问题之前
+        assertThat(messages.get(1).path("role").asText()).isEqualTo("system");
+        assertThat(messages.get(1).path("content").asText())
+                .contains("对话摘要").contains("lamp001 的离线问题").contains("不代表设备当前状态");
+        assertThat(messages.get(2).path("role").asText()).isEqualTo("user");
+        assertThat(messages.get(2).path("content").asText()).contains("【用户问题】").contains("继续分析");
+    }
+
+    @Test
+    void 无摘要时不注入摘要消息() throws Exception {
+        when(llmClient.isConfigured()).thenReturn(true);
+        when(llmClient.completeChat(anyList(), any(ArrayNode.class)))
+                .thenReturn(response("回答"));
+
+        agentService.ask("继续分析", List.of(), null);
+
+        org.mockito.ArgumentCaptor<List<ObjectNode>> captor = org.mockito.ArgumentCaptor.forClass(List.class);
+        verify(llmClient).completeChat(captor.capture(), any(ArrayNode.class));
+        List<ObjectNode> messages = captor.getValue();
+        assertThat(messages).hasSize(2); // system + 当前问题，无摘要消息
     }
 
     // ============ 测试辅助 ============
