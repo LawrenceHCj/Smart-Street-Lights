@@ -2,7 +2,7 @@ import request from './request'
 
 /**
  * 用户与权限（功能清单 F-11）
- * 以下接口为"约定接口"，后端尚未实现（见 API.md），调用失败由页面降级处理。
+ * 接口已由 Java 后端实现；调用失败时由页面降级处理。
  */
 
 export type UserRole = 'admin' | 'municipal' | 'operator'
