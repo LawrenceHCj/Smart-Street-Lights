@@ -22,4 +22,7 @@ public class Device {
     private Boolean lightOn = false; // 当前灯是否开启，默认关
 
     private LocalDateTime createdAt;
+
+    private Double longitude;
+    private Double latitude;
 }

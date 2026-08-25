@@ -30,4 +30,14 @@ public class AlarmController {
         }
         return ApiResponse.success(null);
     }
+
+    // PATCH /api/alarms/{id}/resolve —— 兼容旧契约的别名
+    @PatchMapping("/{id}/resolve")
+    public ApiResponse<Void> resolveAlarm(@PathVariable Long id) {
+        boolean success = alarmService.ackAlarm(id);
+        if (!success) {
+            return ApiResponse.error(400, "告警不存在");
+        }
+        return ApiResponse.success(null);
+    }
 }

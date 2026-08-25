@@ -12,6 +12,8 @@ public class ConfigService {
     public ConfigService() {
         config.setEnabled(true);
         config.setThreshold(30);
+        config.setHysteresis(5);
+        config.setHeartbeatTimeoutMs(90000);
     }
 
     public LinkageConfigDTO getLinkageConfig() {
@@ -21,5 +23,11 @@ public class ConfigService {
     public void saveLinkageConfig(LinkageConfigDTO newConfig) {
         config.setEnabled(newConfig.isEnabled());
         config.setThreshold(newConfig.getThreshold());
+        if (newConfig.getHysteresis() != 0) {
+            config.setHysteresis(newConfig.getHysteresis());
+        }
+        if (newConfig.getHeartbeatTimeoutMs() != 0) {
+            config.setHeartbeatTimeoutMs(newConfig.getHeartbeatTimeoutMs());
+        }
     }
 }

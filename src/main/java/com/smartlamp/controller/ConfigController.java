@@ -22,7 +22,22 @@ public class ConfigController {
     // PUT /api/config/linkage
     @PutMapping("/linkage")
     public ApiResponse<Void> saveLinkageConfig(@RequestBody LinkageConfigDTO config) {
-        // 简单校验阈值范围 0-500（前端已约束，这里再防一手）
+        if (config.getThreshold() < 0 || config.getThreshold() > 500) {
+            return ApiResponse.error(400, "阈值必须在 0-500 之间");
+        }
+        configService.saveLinkageConfig(config);
+        return ApiResponse.success(null);
+    }
+
+    // GET /api/config —— 系统配置
+    @GetMapping
+    public ApiResponse<LinkageConfigDTO> getConfig() {
+        return ApiResponse.success(configService.getLinkageConfig());
+    }
+
+    // PUT /api/config —— 系统配置
+    @PutMapping
+    public ApiResponse<Void> saveConfig(@RequestBody LinkageConfigDTO config) {
         if (config.getThreshold() < 0 || config.getThreshold() > 500) {
             return ApiResponse.error(400, "阈值必须在 0-500 之间");
         }
