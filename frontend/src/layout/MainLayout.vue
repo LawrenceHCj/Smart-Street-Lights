@@ -76,8 +76,8 @@
               <el-icon aria-hidden="true"><Bell /></el-icon>
             </button>
           </el-tooltip>
-          <span class="user-avatar" aria-hidden="true">A</span>
-          <span class="user-name">admin</span>
+          <span class="user-avatar" aria-hidden="true">{{ currentUser[0]?.toUpperCase() ?? 'U' }}</span>
+          <span class="user-name">{{ currentUser }}</span>
           <el-tooltip content="退出登录" placement="bottom">
             <button class="header-icon logout" type="button" aria-label="退出登录" @click="logout">
               <el-icon aria-hidden="true"><SwitchButton /></el-icon>
@@ -117,6 +117,9 @@ const isOnline = ref(navigator.onLine)
 const fullClock = ref('')
 const clockIso = ref('')
 let timer: ReturnType<typeof setInterval> | null = null
+
+// 当前登录用户：登录时写入 localStorage，退出时清理
+const currentUser = localStorage.getItem('username') || '用户'
 
 const nav = [
   { path: '/dashboard', label: '运行概览', icon: DataBoard },
@@ -181,6 +184,7 @@ function navigate(path: string) {
 
 function logout() {
   localStorage.removeItem('token')
+  localStorage.removeItem('username')
   router.push('/login')
 }
 
