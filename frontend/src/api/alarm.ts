@@ -8,6 +8,9 @@ import request from './request'
 export type AlarmLevel = 'info' | 'warning' | 'critical'
 export type AlarmStatus = 'OPEN' | 'ACKED'
 
+/** 展示层派生状态：在原 OPEN/ACKED 基础上增加「已恢复」与「已关闭」 */
+export type AlarmGroupStatus = AlarmStatus | 'RECOVERED' | 'CLOSED'
+
 export interface AlarmVO {
   id: number
   deviceId: string
@@ -16,6 +19,26 @@ export interface AlarmVO {
   message: string
   ts: number
   status: AlarmStatus
+}
+
+/** 按「设备+类型」聚合后的告警条目（去重并统计发生情况） */
+export interface AlarmGroup {
+  deviceId: string
+  type: string
+  level: AlarmLevel
+  message: string
+  /** 首次发生时间戳 */
+  firstTs: number
+  /** 最后发生时间戳 */
+  lastTs: number
+  /** 发生次数 */
+  count: number
+  /** 派生状态（由最新一条原始状态 + 设备在线情况得出） */
+  status: AlarmGroupStatus
+  /** 组内仍为 OPEN 的行 id（批量确认用） */
+  openIds: number[]
+  /** 最新一条原始告警 */
+  latest: AlarmVO
 }
 
 /** 告警记录列表 F-09：GET /api/alarms */
