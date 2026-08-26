@@ -4,6 +4,7 @@ import com.smartlamp.dto.ApiResponse;
 import com.smartlamp.entity.Alarm;
 import com.smartlamp.service.AlarmService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -23,6 +24,7 @@ public class AlarmController {
 
     // POST /api/alarms/{id}/ack
     @PostMapping("/{id}/ack")
+    @PreAuthorize("hasAnyRole('admin','operator')")
     public ApiResponse<Void> ackAlarm(@PathVariable Long id) {
         boolean success = alarmService.ackAlarm(id);
         if (!success) {
@@ -32,6 +34,7 @@ public class AlarmController {
     }
 
     @PatchMapping("/{id}/resolve")
+    @PreAuthorize("hasAnyRole('admin','operator')")
     public ApiResponse<Void> resolveAlarm(@PathVariable Long id) {
         return ackAlarm(id);
     }

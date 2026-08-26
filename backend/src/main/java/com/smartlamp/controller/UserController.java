@@ -6,6 +6,7 @@ import com.smartlamp.dto.UpdateUserRoleRequest;
 import com.smartlamp.dto.UserDTO;
 import com.smartlamp.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -13,6 +14,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/users")
+@PreAuthorize("hasRole('admin')")
 public class UserController {
 
     @Autowired

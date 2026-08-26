@@ -12,8 +12,9 @@ import com.smartlamp.dto.UpdateDeviceRequest;
 import com.smartlamp.entity.Device;
 import com.smartlamp.entity.DeviceCommand;
 import com.smartlamp.service.DeviceCommandService;
-import com.smartlamp.service.DeviceService;
 import com.smartlamp.service.DeviceHealthService;
+import com.smartlamp.service.DeviceService;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -51,6 +52,7 @@ public class DeviceController {
     }
 
     @PostMapping("/{deviceId}/health/evaluate")
+    @PreAuthorize("hasAnyRole('admin','operator')")
     public ApiResponse<DeviceHealthDTO> evaluateHealth(@PathVariable String deviceId) {
         DeviceHealthDTO report = healthService.evaluateDeviceHealth(deviceId);
         return report == null
@@ -65,6 +67,7 @@ public class DeviceController {
     }
 
     @PostMapping("/{deviceId}/switch")
+    @PreAuthorize("hasAnyRole('admin','operator')")
     public ApiResponse<ControlResultDTO> switchLight(@PathVariable String deviceId,
                                                       @RequestBody SwitchLightRequest request) {
         DeviceCommand command = commandService.dispatch(deviceId, request.isOn() ? "ON" : "OFF", "MANUAL");
@@ -72,6 +75,7 @@ public class DeviceController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAnyRole('admin','operator')")
     public ApiResponse<DeviceDTO> addDevice(@RequestBody AddDeviceRequest request) {
         if (request.getCode() == null || request.getCode().isBlank()) {
             return ApiResponse.error(400, "设备编号不能为空");
@@ -89,6 +93,7 @@ public class DeviceController {
     }
 
     @PatchMapping("/{deviceId}")
+    @PreAuthorize("hasAnyRole('admin','operator')")
     public ApiResponse<DeviceDTO> updateDevice(@PathVariable String deviceId,
                                                 @RequestBody UpdateDeviceRequest request) {
         if ((request.getLongitude() != null && (request.getLongitude() < -180 || request.getLongitude() > 180))
@@ -103,6 +108,7 @@ public class DeviceController {
     }
 
     @PostMapping("/{deviceId}/control")
+    @PreAuthorize("hasAnyRole('admin','operator')")
     public ApiResponse<ControlResultDTO> control(@PathVariable String deviceId,
                                                   @RequestBody ControlRequest request) {
         DeviceCommand command = commandService.dispatch(deviceId, request.getAction(), "MANUAL");
@@ -115,6 +121,7 @@ public class DeviceController {
     }
 
     @DeleteMapping("/{deviceId}")
+    @PreAuthorize("hasAnyRole('admin','operator')")
     public ApiResponse<Void> removeDevice(@PathVariable String deviceId) {
         return deviceService.removeDevice(deviceId)
                 ? ApiResponse.success(null)
