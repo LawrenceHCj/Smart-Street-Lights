@@ -1,5 +1,6 @@
 package com.smartlamp.agent.actions;
 
+import com.smartlamp.dto.CommandStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -40,7 +41,10 @@ class ActionGatewayTest {
     @Test
     void 未确认时业务执行器绝不被调用() {
         AtomicInteger calls = new AtomicInteger();
-        gateway.registerExecutor(ActionType.TURN_OFF_LIGHT, a -> calls.incrementAndGet());
+        gateway.registerExecutor(ActionType.TURN_OFF_LIGHT, a -> {
+            calls.incrementAndGet();
+            return null;
+        });
         AgentAction action = manager.create(ActionType.TURN_OFF_LIGHT, "device", "lamp001", Map.of(), "u");
 
         assertThatThrownBy(() -> gateway.execute(action.getActionId()))
@@ -73,7 +77,10 @@ class ActionGatewayTest {
     @Test
     void 注册执行器后确认执行会调用执行器() {
         AtomicInteger calls = new AtomicInteger();
-        gateway.registerExecutor(ActionType.TURN_OFF_LIGHT, a -> calls.incrementAndGet());
+        gateway.registerExecutor(ActionType.TURN_OFF_LIGHT, a -> {
+            calls.incrementAndGet();
+            return null;
+        });
         AgentAction action = manager.create(ActionType.TURN_OFF_LIGHT, "device", "lamp001", Map.of(), "u");
         manager.confirm(action.getActionId());
 
@@ -127,8 +134,49 @@ class ActionGatewayTest {
 
     @Test
     void 高风险操作不允许注册执行器() {
-        assertThatThrownBy(() -> gateway.registerExecutor(ActionType.TURN_OFF_ALL, a -> {
-        }))
+        assertThatThrownBy(() -> gateway.registerExecutor(ActionType.TURN_OFF_ALL, a -> null))
                 .isInstanceOf(ActionRejectedException.class).hasMessageContaining("高风险");
+    }
+
+    // ============ 执行结果 → 终态映射（阶段18：未收到设备回执绝不标记 SUCCESS） ============
+
+    @Test
+    void 执行器报告COMMAND_ACCEPTED时Action置COMMAND_ACCEPTED而非SUCCESS() {
+        gateway.registerExecutor(ActionType.TURN_OFF_LIGHT,
+                a -> new ExecutorResult(CommandStatus.COMMAND_ACCEPTED, "COMMAND_ACCEPTED：控制指令已发送，但当前尚未获得设备执行确认"));
+        AgentAction action = manager.create(ActionType.TURN_OFF_LIGHT, "device", "lamp001", Map.of(), "u");
+        manager.confirm(action.getActionId());
+
+        AgentAction result = gateway.execute(action.getActionId());
+
+        assertThat(result.getStatus()).isEqualTo(ActionStatus.COMMAND_ACCEPTED);
+        assertThat(result.getMessage()).contains("COMMAND_ACCEPTED").contains("尚未获得设备执行确认");
+    }
+
+    @Test
+    void 执行器报告DEVICE_CONFIRMED时Action置SUCCESS() {
+        gateway.registerExecutor(ActionType.TURN_OFF_LIGHT,
+                a -> new ExecutorResult(CommandStatus.DEVICE_CONFIRMED, "DEVICE_CONFIRMED：设备已确认执行"));
+        AgentAction action = manager.create(ActionType.TURN_OFF_LIGHT, "device", "lamp001", Map.of(), "u");
+        manager.confirm(action.getActionId());
+
+        AgentAction result = gateway.execute(action.getActionId());
+
+        assertThat(result.getStatus()).isEqualTo(ActionStatus.SUCCESS);
+        assertThat(result.getMessage()).contains("DEVICE_CONFIRMED");
+    }
+
+    @Test
+    void 执行器报告FAILED或TIMEOUT时Action置FAILED并拒绝() {
+        gateway.registerExecutor(ActionType.TURN_OFF_LIGHT,
+                a -> new ExecutorResult(CommandStatus.TIMEOUT, "TIMEOUT：控制指令已发送，但设备在 5000 毫秒内未确认执行"));
+        AgentAction action = manager.create(ActionType.TURN_OFF_LIGHT, "device", "lamp001", Map.of(), "u");
+        manager.confirm(action.getActionId());
+
+        assertThatThrownBy(() -> gateway.execute(action.getActionId()))
+                .isInstanceOf(ActionRejectedException.class)
+                .hasMessageContaining("TIMEOUT");
+        assertThat(manager.find(action.getActionId()).orElseThrow().getStatus())
+                .isEqualTo(ActionStatus.FAILED);
     }
 }

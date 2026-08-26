@@ -142,6 +142,47 @@ class ActionManagerTest {
                 .isInstanceOf(ActionRejectedException.class).hasMessageContaining("targetType");
     }
 
+    // ============ 二次复核 revalidate（阶段17：确认/执行前参数防线） ============
+
+    private AgentAction handAction(ActionType type, String targetType, String targetId, Map<String, Object> args) {
+        AgentAction action = new AgentAction();
+        action.setActionType(type);
+        action.setTargetType(targetType);
+        action.setTargetId(targetId);
+        action.setArguments(args);
+        return action;
+    }
+
+    @Test
+    void 复核时万能命令参数键仍被拒绝() {
+        AgentAction action = handAction(ActionType.TURN_OFF_LIGHT, "device", "lamp001", Map.of("command", "rm -rf /"));
+
+        assertThatThrownBy(() -> manager.revalidate(action))
+                .isInstanceOf(ActionRejectedException.class).hasMessageContaining("command");
+    }
+
+    @Test
+    void 复核时未知参数键仍被拒绝() {
+        AgentAction action = handAction(ActionType.TURN_OFF_LIGHT, "device", "lamp001", Map.of("interval", 5));
+
+        assertThatThrownBy(() -> manager.revalidate(action))
+                .isInstanceOf(ActionRejectedException.class).hasMessageContaining("不允许的参数");
+    }
+
+    @Test
+    void 复核时非法目标仍被拒绝() {
+        assertThatThrownBy(() -> manager.revalidate(handAction(ActionType.TURN_ON_LIGHT, "mqtt", "lamp001", Map.of())))
+                .isInstanceOf(ActionRejectedException.class).hasMessageContaining("targetType");
+        assertThatThrownBy(() -> manager.revalidate(handAction(ActionType.TURN_ON_LIGHT, "device", " ", Map.of())))
+                .isInstanceOf(ActionRejectedException.class).hasMessageContaining("targetId");
+    }
+
+    @Test
+    void 合法Action复核通过() {
+        manager.revalidate(handAction(ActionType.TURN_OFF_LIGHT, "device", "lamp001", Map.of()));
+        manager.revalidate(handAction(ActionType.TURN_ON_LIGHT, "device", "lamp002", Map.of()));
+    }
+
     // ============ 非法状态流转 ============
 
     @Test
@@ -160,6 +201,19 @@ class ActionManagerTest {
 
         assertThatThrownBy(() -> manager.cancel(action.getActionId()))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void 执行中可标记COMMAND_ACCEPTED终态() {
+        AgentAction action = manager.create(ActionType.TURN_OFF_LIGHT, "device", "lamp001", Map.of(), "u");
+        manager.confirm(action.getActionId());
+        manager.markExecuting(action.getActionId());
+        manager.markAccepted(action.getActionId(), "COMMAND_ACCEPTED：控制指令已发送，但当前尚未获得设备执行确认");
+
+        assertThat(manager.find(action.getActionId()).orElseThrow().getStatus())
+                .isEqualTo(ActionStatus.COMMAND_ACCEPTED);
+        assertThat(manager.find(action.getActionId()).orElseThrow().getMessage())
+                .contains("尚未获得设备执行确认");
     }
 
     @Test

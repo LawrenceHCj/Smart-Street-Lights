@@ -1,5 +1,6 @@
 package com.smartlamp.exception;
 
+import com.smartlamp.agent.actions.ActionRejectedException;
 import com.smartlamp.dto.ApiResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,6 +30,12 @@ public class GlobalExceptionHandler {
     // 处理业务参数类错误，例如 AI 问答空问题
     @ExceptionHandler(BadRequestException.class)
     public ApiResponse<Object> handleBadRequest(BadRequestException ex) {
+        return ApiResponse.error(400, ex.getMessage());
+    }
+
+    // 处理 Agent Action 业务拒绝（不存在/已过期/状态不允许/确认时二次校验未通过等）
+    @ExceptionHandler(ActionRejectedException.class)
+    public ApiResponse<Object> handleActionRejected(ActionRejectedException ex) {
         return ApiResponse.error(400, ex.getMessage());
     }
 

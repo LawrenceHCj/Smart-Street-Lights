@@ -1,10 +1,11 @@
 package com.smartlamp.agent.actions;
 
 // 业务执行器接口：ActionGateway 检查全部通过后才会调用。
-// 后续阶段将 3号成员的正式 Service（如开关灯）包装后通过 ActionGateway.registerExecutor 注册；
-// 本阶段不注册任何执行器，也不会触碰任何业务 Service / MQTT / 数据库写操作。
+// 返回 ExecutorResult 如实报告执行结果（ActionGateway 依据 status 决定 Action 终态）；
+// 返回 null 表示执行器不报告结果（按默认"执行成功"处理）。
+// 安全红线：未收到设备回执时不得返回 DEVICE_CONFIRMED（否则会虚假标记 SUCCESS）。
 @FunctionalInterface
 public interface ActionExecutor {
 
-    void execute(AgentAction action) throws Exception;
+    ExecutorResult execute(AgentAction action);
 }

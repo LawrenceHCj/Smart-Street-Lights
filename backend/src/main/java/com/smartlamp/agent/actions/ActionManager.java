@@ -100,6 +100,12 @@ public class ActionManager {
         }
     }
 
+    // 参数二次复核：创建时已校验，确认/执行前再次校验作为第二道防线
+    public void revalidate(AgentAction action) {
+        validateTarget(action.getTargetType(), action.getTargetId());
+        validateArguments(action.getActionType(), action.getArguments());
+    }
+
     // ============ 以下状态流转仅供 ActionGateway 使用（包内可见） ============
 
     synchronized void markExecuting(String actionId) {
@@ -114,6 +120,12 @@ public class ActionManager {
     synchronized void markSuccess(String actionId, String message) {
         AgentAction action = require(actionId);
         action.setStatus(ActionStatus.SUCCESS);
+        action.setMessage(message);
+    }
+
+    synchronized void markAccepted(String actionId, String message) {
+        AgentAction action = require(actionId);
+        action.setStatus(ActionStatus.COMMAND_ACCEPTED);
         action.setMessage(message);
     }
 
