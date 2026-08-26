@@ -7,6 +7,7 @@ spring:
     username: root
     password: "123456"
     driver-class-name: com.mysql.cj.jdbc.Driver
+
   jpa:
     hibernate:
       ddl-auto: update
@@ -17,3 +18,7 @@ mqtt:
   client-id: smartlamp-backend
   username:
   password:
+
+data-retention:
+  light-point-days: 30
+  dead-letter-days: 7

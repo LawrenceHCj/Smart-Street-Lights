@@ -36,7 +36,11 @@ public class Alarm {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private AlarmStatus status; // OPEN / ACKED
+    private AlarmStatus status; // OPEN / ACKED / RECOVERED
+
+    private LocalDateTime firstOccurredAt;   // 首次发生时间
+    private LocalDateTime lastOccurredAt;    // 最后发生时间
+    private Integer occurrenceCount = 1;     // 发生次数
 
     private LocalDateTime createdAt;
 }

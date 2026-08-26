@@ -2,9 +2,15 @@ package com.smartlamp.service;
 
 import com.smartlamp.dto.LinkageConfigDTO;
 import com.smartlamp.entity.Device;
+import com.smartlamp.entity.DeviceCommand;
+import com.smartlamp.entity.enums.CommandStatus;
+import com.smartlamp.repository.DeviceCommandRepository;
 import com.smartlamp.repository.DeviceRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Service
 public class AutoControlService {
@@ -18,13 +24,13 @@ public class AutoControlService {
     @Autowired
     private DeviceRepository deviceRepository;
 
-    /**
-     * 根据光照数据自动控制开关灯
-     */
+    @Autowired
+    private DeviceCommandRepository deviceCommandRepository;
+
     public void handleLightData(String deviceId, double lux) {
         LinkageConfigDTO config = configService.getLinkageConfig();
         if (!config.isEnabled()) {
-            return; // 联动功能关闭，不自动控制
+            return;
         }
 
         Device device = deviceRepository.findByCode(deviceId).orElse(null);
@@ -32,20 +38,29 @@ public class AutoControlService {
             return;
         }
 
-        boolean shouldOn = lux < config.getThreshold(); // 光照低于阈值开灯，否则关灯
+        boolean shouldOn = lux < config.getThreshold();
         boolean currentOn = device.getLightOn() != null && device.getLightOn();
 
         if (shouldOn != currentOn) {
-            // 发送 MQTT 指令
-            String payload = "{\"deviceId\":\"" + deviceId + "\",\"on\":" + shouldOn + "}";
+            String action = shouldOn ? "ON" : "OFF";
+            String commandId = UUID.randomUUID().toString();
+
+            // 创建指令记录
+            DeviceCommand command = new DeviceCommand();
+            command.setCommandId(commandId);
+            command.setDeviceCode(deviceId);
+            command.setAction(action);
+            command.setStatus(CommandStatus.DISPATCHED);
+            command.setCreatedAt(LocalDateTime.now());
+            command.setUpdatedAt(LocalDateTime.now());
+            deviceCommandRepository.save(command);
+
+            // 发布指令
+            String payload = "{\"deviceId\":\"" + deviceId + "\",\"on\":" + shouldOn + ",\"commandId\":\"" + commandId + "\"}";
             String topic = "device/" + deviceId + "/cmd";
             mqttPublisherService.publish(topic, payload);
 
-            // 更新设备开关状态
-            device.setLightOn(shouldOn);
-            deviceRepository.save(device);
-
-            System.out.println("自动控制：设备 " + deviceId + " 光照 " + lux + "，执行 " + (shouldOn ? "开灯" : "关灯"));
+            System.out.println("自动控制：设备 " + deviceId + " 光照 " + lux + "，下发 " + action + " 指令，commandId=" + commandId);
         }
     }
 }
