@@ -59,7 +59,7 @@ public class MqttConfig {
     public MqttPahoMessageDrivenChannelAdapter mqttInbound() {
         MqttPahoMessageDrivenChannelAdapter adapter =
                 new MqttPahoMessageDrivenChannelAdapter(clientId, mqttClientFactory(),
-                        "device/+/data", "device/+/heartbeat");
+                        "device/+/data", "device/+/heartbeat", "device/+/cmd_ack");
         adapter.setQos(1);
         adapter.setOutputChannel(mqttInputChannel());
         return adapter;

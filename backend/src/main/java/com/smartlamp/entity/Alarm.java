@@ -32,7 +32,11 @@ public class Alarm {
     private Long ts;            // 触发毫秒时间戳
 
     @Column(nullable = false)
-    private String status;      // OPEN / ACKED
+    private String status;      // OPEN / ACKED / RECOVERED
+
+    private LocalDateTime firstOccurredAt;   // 首次发生时间
+    private LocalDateTime lastOccurredAt;    // 最后发生时间
+    private Integer occurrenceCount = 1;     // 发生次数
 
     private LocalDateTime createdAt;
 }

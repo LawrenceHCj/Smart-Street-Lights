@@ -5,6 +5,7 @@ import com.smartlamp.dto.LightDataDTO;
 import com.smartlamp.entity.Device;
 import com.smartlamp.repository.AlarmRepository;
 import com.smartlamp.repository.DeviceRepository;
+import com.smartlamp.repository.DeviceCommandRepository;
 import com.smartlamp.repository.LightPointRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -25,6 +26,9 @@ public class DeviceService {
 
     @Autowired
     private AlarmRepository alarmRepository;
+
+    @Autowired
+    private DeviceCommandRepository deviceCommandRepository;
 
     // 原有的获取所有设备实体（备用）
     public List<Device> getAllDevices() {
@@ -115,6 +119,7 @@ public class DeviceService {
         }
         lightPointRepository.deleteByDeviceCode(code);
         alarmRepository.deleteByDeviceId(code);
+        deviceCommandRepository.deleteByDeviceCode(code);
         deviceRepository.delete(device);
         return true;
     }

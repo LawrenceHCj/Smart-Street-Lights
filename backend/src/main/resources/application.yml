@@ -26,3 +26,7 @@ llm:
   api-key: ${LLM_API_KEY:}
   base-url: ${LLM_BASE_URL:https://api.openai.com/v1}
   model: ${LLM_MODEL:}
+
+data-retention:
+  light-point-days: 30
+  dead-letter-days: 7
