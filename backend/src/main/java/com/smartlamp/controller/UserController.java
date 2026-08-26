@@ -6,6 +6,7 @@ import com.smartlamp.dto.UpdateUserRoleRequest;
 import com.smartlamp.dto.UserDTO;
 import com.smartlamp.service.UserService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -46,13 +47,21 @@ public class UserController {
     // PUT /api/users/{id}/role
     @PutMapping("/{id}/role")
     public ApiResponse<Void> updateRole(@PathVariable Long id,
-                                        @RequestBody UpdateUserRoleRequest request) {
+                                        @RequestBody UpdateUserRoleRequest request,
+                                        Authentication authentication) {
         if (request.getRole() == null || !request.getRole().matches("admin|municipal|operator")) {
             return ApiResponse.error(400, "角色必须为 admin / municipal / operator");
         }
-        boolean success = userService.updateUserRole(id, request.getRole());
+        boolean isAdmin = authentication != null && authentication.getAuthorities().stream()
+                .anyMatch(authority -> "ROLE_admin".equals(authority.getAuthority()));
+        boolean success = userService.updateUserRole(
+                id,
+                request.getRole(),
+                authentication == null ? null : authentication.getName(),
+                isAdmin
+        );
         if (!success) {
-            return ApiResponse.error(400, "用户不存在或不允许修改管理员");
+            return ApiResponse.error(403, "仅管理员可调整角色，且不能修改自己的角色");
         }
         return ApiResponse.success(null);
     }

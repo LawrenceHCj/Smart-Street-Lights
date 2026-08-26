@@ -23,7 +23,15 @@
           未处理告警
         </div>
         <div class="stat-value">{{ openCount }}<span class="unit">条</span></div>
-        <div class="stat-sub">待人工确认处理</div>
+        <div class="stat-sub">设备离线且未确认</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">
+          <el-icon class="label-icon"><CircleCheck /></el-icon>
+          已恢复
+        </div>
+        <div class="stat-value">{{ recoveredCount }}<span class="unit">条</span></div>
+        <div class="stat-sub">设备已恢复，待确认关闭</div>
       </div>
       <div class="stat-card">
         <div class="stat-label">
@@ -36,9 +44,9 @@
       <div class="stat-card accent">
         <div class="stat-label">
           <el-icon class="label-icon"><Finished /></el-icon>
-          已处理
+          已闭环
         </div>
-        <div class="stat-value">{{ ackedCount }}<span class="unit">条</span></div>
+        <div class="stat-value">{{ closedCount }}<span class="unit">条</span></div>
         <div class="stat-sub">已确认并派单处理</div>
       </div>
     </div>
@@ -49,17 +57,13 @@
         <div class="panel-meta">
           <el-radio-group v-model="filter" size="small">
             <el-radio-button label="all">全部</el-radio-button>
-            <el-radio-button label="open">未处理</el-radio-button>
+            <el-radio-button label="pending">未处理</el-radio-button>
+            <el-radio-button label="closed">已闭环</el-radio-button>
           </el-radio-group>
         </div>
       </div>
       <div class="table-wrap">
-        <el-table :data="filteredAlarms">
-          <el-table-column label="时间" width="180">
-            <template #default="{ row }">
-              <span class="num">{{ time(row.ts) }}</span>
-            </template>
-          </el-table-column>
+        <el-table :data="filteredGroups">
           <el-table-column label="设备" width="120">
             <template #default="{ row }">
               <span class="num">{{ row.deviceId }}</span>
@@ -71,19 +75,34 @@
               <span class="level-pill" :class="row.level">{{ levelLabel(row.level) }}</span>
             </template>
           </el-table-column>
-          <el-table-column prop="message" label="告警内容" min-width="240" show-overflow-tooltip />
+          <el-table-column label="首次发生" width="160">
+            <template #default="{ row }">
+              <span class="num">{{ time(row.firstTs) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="最后发生" width="160">
+            <template #default="{ row }">
+              <span class="num">{{ time(row.lastTs) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="次数" width="80" align="center">
+            <template #default="{ row }">
+              <span class="count-pill num">{{ row.count }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="message" label="告警内容" min-width="220" show-overflow-tooltip />
           <el-table-column label="状态" width="110">
             <template #default="{ row }">
-              <span class="status-pill" :class="row.status === 'OPEN' ? 'offline' : 'online'">
-                <span class="status-dot" :class="row.status === 'OPEN' ? 'offline' : 'online'"></span>
-                {{ row.status === 'OPEN' ? '未处理' : '已处理' }}
+              <span class="status-pill" :class="statusClass(row.status as AlarmGroupStatus)">
+                <span class="status-dot" :class="statusDotClass(row.status as AlarmGroupStatus)"></span>
+                {{ statusLabel[row.status as AlarmGroupStatus] }}
               </span>
             </template>
           </el-table-column>
           <el-table-column label="操作" width="110" align="right" fixed="right">
             <template #default="{ row }">
               <el-button
-                v-if="row.status === 'OPEN'"
+                v-if="row.latest.status === 'OPEN'"
                 size="small"
                 text
                 type="primary"
@@ -108,29 +127,49 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { Bell, CircleClose, Finished } from '@element-plus/icons-vue'
+import { Bell, CircleCheck, CircleClose, Finished } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { listAlarms, ackAlarm } from '../api/alarm'
-import type { AlarmVO, AlarmLevel } from '../api/alarm'
+import type { AlarmGroup, AlarmGroupStatus, AlarmLevel, AlarmVO } from '../api/alarm'
 import { listDevices } from '../api/device'
 import type { DeviceVO } from '../api/device'
+import { aggregateAlarms, buildDeviceStatusMap, statusCounts } from '../utils/alarms'
 import { probe } from '../api/helper'
 import NotReadyBanner from '../components/NotReadyBanner.vue'
 
 const alarms = ref<AlarmVO[]>([])
 const devices = ref<DeviceVO[]>([])
-const filter = ref<'all' | 'open'>('all')
+const filter = ref<'all' | 'pending' | 'closed'>('all')
 const ready = ref(true)
 const acknowledging = ref(false)
 let timer: ReturnType<typeof setInterval> | null = null
 
-const openCount = computed(() => alarms.value.filter((a) => a.status === 'OPEN').length)
-const ackedCount = computed(() => alarms.value.filter((a) => a.status === 'ACKED').length)
+const deviceStatusMap = computed(() => buildDeviceStatusMap(devices.value))
+const groups = computed(() => aggregateAlarms(alarms.value, deviceStatusMap.value))
+const counts = computed(() => statusCounts(groups.value))
+
+const openCount = computed(() => counts.value.OPEN)
+const recoveredCount = computed(() => counts.value.RECOVERED)
+const closedCount = computed(() => counts.value.ACKED + counts.value.CLOSED)
 const offlineCount = computed(() => devices.value.filter((d) => d.status === 'OFFLINE').length)
 
-const filteredAlarms = computed(() =>
-  filter.value === 'all' ? alarms.value : alarms.value.filter((a) => a.status === 'OPEN'),
-)
+const filteredGroups = computed(() => {
+  if (filter.value === 'all') return groups.value
+  if (filter.value === 'pending')
+    return groups.value.filter((g) => g.status === 'OPEN' || g.status === 'RECOVERED')
+  return groups.value.filter((g) => g.status === 'ACKED' || g.status === 'CLOSED')
+})
+
+const statusLabel: Record<AlarmGroupStatus, string> = {
+  OPEN: '未处理',
+  RECOVERED: '已恢复',
+  ACKED: '已确认',
+  CLOSED: '已关闭',
+}
+const statusClass = (s: AlarmGroupStatus) =>
+  s === 'OPEN' ? 'offline' : s === 'RECOVERED' ? 'recovered' : s === 'ACKED' ? 'acked' : 'closed'
+const statusDotClass = (s: AlarmGroupStatus) =>
+  s === 'OPEN' ? 'offline' : s === 'RECOVERED' ? 'idle' : s === 'CLOSED' ? 'online' : ''
 
 const levelLabel = (l: AlarmLevel) =>
   ({ info: '提示', warning: '警告', critical: '严重' })[l]
@@ -152,16 +191,22 @@ async function load() {
   if (devs.length) devices.value = devs
 }
 
-async function onAck(row: AlarmVO) {
+async function onAck(group: AlarmGroup) {
+  if (!group.openIds.length || acknowledging.value) return
   acknowledging.value = true
   try {
-    const r = await probe(ackAlarm(row.id), null)
-    if (r.ready) {
-      row.status = 'ACKED'
-      ElMessage.success(`${row.deviceId} 告警已确认`)
+    const results = await Promise.all(group.openIds.map((id) => probe(ackAlarm(id), null)))
+    const ok = results.filter((r) => r.ready).length
+    const total = group.openIds.length
+    if (ok === total) {
+      ElMessage.success(`${group.deviceId} 的 ${total} 条告警已确认`)
+    } else if (ok > 0) {
+      ElMessage.warning(`部分告警确认失败（${ok}/${total} 成功）`)
     } else {
       ready.value = false
+      return
     }
+    await load()
   } finally {
     acknowledging.value = false
   }
@@ -250,6 +295,33 @@ onUnmounted(() => {
   font-size: 12px;
   color: var(--text-muted);
 }
+.status-pill.recovered {
+  color: var(--accent-bright);
+  border-color: rgba(250, 152, 25, 0.25);
+  background: var(--accent-dim);
+}
+.status-pill.acked {
+  color: var(--text-secondary);
+  border-color: var(--border);
+  background: var(--bg-surface-2);
+}
+.status-pill.closed {
+  color: var(--ok);
+  border-color: rgba(23, 122, 80, 0.2);
+  background: var(--ok-dim);
+}
+.count-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  padding: 1px 8px;
+  border-radius: 3px;
+  color: var(--text-secondary);
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border);
+  font-weight: 600;
+}
 .table-empty {
   padding: 32px 0;
   color: var(--text-muted);
@@ -273,6 +345,6 @@ onUnmounted(() => {
 .alarms .stat-card:last-child { min-height: 190px; border-bottom: 1px solid var(--border); background: var(--signal); }
 .alarms > .panel { min-height: 490px; border-radius: 0; }
 .alarms .stat-value { color: var(--ink); font-size: 38px; }
-@media (max-width: 800px) { .alarms { display: flex; align-items: stretch; } .alarms > .panel { width: 100%; } .alarms .stats { grid-template-columns: repeat(3, 1fr); } .alarms .stat-card { min-height: 120px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); } .alarms .stat-card + .stat-card { border-left: 0; } .alarms .stat-card:last-child { min-height: 120px; } }
+@media (max-width: 800px) { .alarms { display: flex; align-items: stretch; } .alarms > .panel { width: 100%; } .alarms .stats { grid-template-columns: repeat(2, 1fr); } .alarms .stat-card { min-height: 120px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); } .alarms .stat-card + .stat-card { border-left: 0; } .alarms .stat-card:last-child { min-height: 120px; } }
 @media (max-width: 560px) { .alarms .stats { grid-template-columns: 1fr; } .alarms .stat-card + .stat-card { border-top: 0; border-left: 1px solid var(--border); } }
 </style>

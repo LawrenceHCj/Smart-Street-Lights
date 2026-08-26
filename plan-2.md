@@ -33,7 +33,7 @@ Agent向用户报告真实结果
 
 LLM → MQTT
 LLM → ESP32
-LLM → 直接修改数据库  
+LLM → 直接修改数据库
 LLM → 直接写系统配置文件
 Agent Tool → 自己重新实现一套设备控制逻辑
 

@@ -1,6 +1,47 @@
 <template>
   <div class="chat-wrap">
-    <section class="panel chat" aria-labelledby="chat-title" :aria-busy="loading">
+    <aside class="sidebar" :class="{ open: sidebarOpen }" aria-label="会话列表">
+      <div class="sidebar-head">
+        <span class="sidebar-title">会话历史</span>
+        <el-button size="small" text type="primary" :disabled="loading" @click="resetChat">
+          <el-icon><Plus /></el-icon>
+          <span>新建会话</span>
+        </el-button>
+      </div>
+      <div class="sidebar-body">
+        <div v-if="sidebarLoading" class="sidebar-state">正在加载会话…</div>
+        <div v-else-if="sidebarError" class="sidebar-state error">
+          {{ sidebarError }}
+          <button class="inline-action" type="button" @click="loadConversations">重试</button>
+        </div>
+        <div v-else-if="!conversations.length" class="sidebar-state">暂无会话</div>
+        <ul v-else class="conv-list">
+          <li
+            v-for="c in conversations"
+            :key="c.conversationId"
+            class="conv-item"
+            :class="{ active: c.conversationId === currentId }"
+            @click="openConversation(c.conversationId)"
+          >
+            <div class="conv-main">
+              <span class="conv-title">{{ c.title || '新会话' }}</span>
+              <span class="conv-time num">{{ formatTime(c.lastMessageAt) }}</span>
+            </div>
+            <button
+              class="conv-delete"
+              type="button"
+              :aria-label="`删除会话 ${c.title || '新会话'}`"
+              :disabled="deleting"
+              @click.stop="confirmDelete(c)"
+            >
+              <el-icon><Delete /></el-icon>
+            </button>
+          </li>
+        </ul>
+      </div>
+    </aside>
+    <div v-if="sidebarOpen" class="sidebar-backdrop" @click="sidebarOpen = false"></div>
+    <section class="panel chat" aria-labelledby="chat-title" :aria-busy="loading || loadingHistory">
       <div class="chat-head">
         <div class="chat-title">
           <span class="chat-mark"><el-icon><ReadingLamp /></el-icon></span>
@@ -10,13 +51,16 @@
           </div>
         </div>
         <div class="chat-actions">
+          <button class="conv-toggle" type="button" aria-label="会话列表" @click="sidebarOpen = true">
+            <el-icon><Menu /></el-icon>
+          </button>
           <el-button
             text
             size="small"
             class="clear-btn"
             :disabled="loading || messages.length <= 1"
             aria-label="清空当前对话"
-            @click="clearChat"
+            @click="resetChat"
           >
             <el-icon><Delete /></el-icon>
             <span>清空对话</span>
@@ -53,10 +97,19 @@
             <div class="typing-text">正在检索维护知识…</div>
           </div>
         </div>
+        <div v-if="loadingHistory" class="msg bot">
+          <div class="msg-avatar">
+            <el-icon><ReadingLamp /></el-icon>
+          </div>
+          <div class="msg-body">
+            <div class="typing"><i></i><i></i><i></i></div>
+            <div class="typing-text">正在加载历史记录…</div>
+          </div>
+        </div>
       </div>
 
       <div class="input-zone">
-        <div v-if="messages.length <= 1" class="suggest">
+        <div v-if="!loading && !loadingHistory && isFresh" class="suggest">
           <span class="suggest-label">试试问：</span>
           <button
             v-for="q in suggestions"
@@ -108,10 +161,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
-import { Delete, Document, Promotion, ReadingLamp, WarningFilled } from '@element-plus/icons-vue'
-import { ask } from '../api/agent'
-import type { Source } from '../api/agent'
+import { ref, computed, nextTick, onMounted, watch } from 'vue'
+import { Delete, Document, Menu, Plus, Promotion, ReadingLamp, WarningFilled } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import {
+  ask,
+  listConversations,
+  getConversationMessages,
+  deleteConversation,
+  parseMessageSources,
+} from '../api/agent'
+import type { AgentMessage, Conversation, Source } from '../api/agent'
 
 interface Msg {
   role: 'user' | 'bot'
@@ -119,14 +179,29 @@ interface Msg {
   sources?: Source[]
 }
 
-const messages = ref<Msg[]>([
-  { role: 'bot', content: '您好，我是路灯维护助手，可以协助您排查故障、查询维护知识。' },
-])
+const KEY = 'chatConversationId'
+const GREETING: Msg = { role: 'bot', content: '您好，我是路灯维护助手，可以协助您排查故障、查询维护知识。' }
+
+const messages = ref<Msg[]>([GREETING])
 const input = ref('')
 const loading = ref(false)
 const listRef = ref<HTMLDivElement>()
 const sendError = ref('')
 const failedQuestion = ref('')
+
+const conversations = ref<Conversation[]>([])
+const currentId = ref('')
+const sidebarOpen = ref(false)
+const sidebarLoading = ref(false)
+const sidebarError = ref('')
+const deleting = ref(false)
+const loadingHistory = ref(false)
+const isFresh = computed(() => !currentId.value)
+
+watch(currentId, (v) => {
+  if (v) localStorage.setItem(KEY, v)
+  else localStorage.removeItem(KEY)
+})
 
 const suggestions = [
   '路灯离线常见原因？',
@@ -140,12 +215,70 @@ function askQuick(q: string) {
   send()
 }
 
-function clearChat() {
-  messages.value = [
-    { role: 'bot', content: '您好，我是路灯维护助手，可以协助您排查故障、查询维护知识。' },
-  ]
+function formatTime(iso?: string | null) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+function toMsg(m: AgentMessage): Msg {
+  return m.role === 'user'
+    ? { role: 'user', content: m.content }
+    : { role: 'bot', content: m.content, sources: parseMessageSources(m.metadata) }
+}
+
+async function loadConversations() {
+  sidebarLoading.value = true
+  try {
+    conversations.value = await listConversations()
+    sidebarError.value = ''
+  } catch {
+    sidebarError.value = '会话列表加载失败'
+  } finally {
+    sidebarLoading.value = false
+  }
+}
+
+/** 发送/切换后静默刷新会话列表，失败时保持当前列表 */
+async function refreshConversations() {
+  try {
+    conversations.value = await listConversations()
+  } catch {
+    /* 保持当前列表 */
+  }
+}
+
+async function openConversation(id: string) {
+  if (deleting.value || loading.value) return
+  currentId.value = id
+  messages.value = []
+  loadingHistory.value = true
+  sidebarError.value = ''
+  try {
+    const list = await getConversationMessages(id)
+    messages.value = list.length ? list.map(toMsg) : [GREETING]
+  } catch {
+    // 会话可能已被删除或不属于当前用户
+    messages.value = [GREETING]
+    currentId.value = ''
+    if (!sidebarLoading.value) ElMessage.warning('会话不可用，已切换为新对话')
+  } finally {
+    loadingHistory.value = false
+    refreshConversations()
+  }
+  scrollBottom()
+}
+
+/** 新建会话/清空对话：懒重置，下次发送时后端自动创建真实会话 */
+function resetChat() {
+  if (loading.value) return
+  messages.value = [GREETING]
+  currentId.value = ''
   sendError.value = ''
   failedQuestion.value = ''
+  sidebarOpen.value = false
 }
 
 function retry() {
@@ -170,9 +303,11 @@ async function send(retrying = false) {
   failedQuestion.value = q
   scrollBottom()
   try {
-    const r = await ask(q)
+    const r = await ask(q, currentId.value || undefined)
     messages.value.push({ role: 'bot', content: r.answer, sources: r.sources })
+    if (r.conversationId) currentId.value = r.conversationId
     failedQuestion.value = ''
+    refreshConversations()
   } catch {
     sendError.value = '问题发送失败，请检查服务连接后重试。'
   } finally {
@@ -180,6 +315,36 @@ async function send(retrying = false) {
     scrollBottom()
   }
 }
+
+async function confirmDelete(c: Conversation) {
+  try {
+    await ElMessageBox.confirm(
+      `删除会话「${c.title || '新会话'}」后其历史记录将无法恢复，确认删除？`,
+      '删除会话',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  deleting.value = true
+  try {
+    await deleteConversation(c.conversationId)
+    conversations.value = conversations.value.filter((x) => x.conversationId !== c.conversationId)
+    if (c.conversationId === currentId.value) resetChat()
+    ElMessage.success('会话已删除')
+  } catch {
+    ElMessage.error('删除会话失败，请重试')
+    refreshConversations()
+  } finally {
+    deleting.value = false
+  }
+}
+
+onMounted(async () => {
+  currentId.value = localStorage.getItem(KEY) || ''
+  await loadConversations()
+  if (currentId.value) await openConversation(currentId.value)
+})
 </script>
 
 <style scoped>
@@ -512,8 +677,26 @@ async function send(retrying = false) {
   }
 }
 /* Full-height intelligence desk */
-.chat-wrap { max-width: 1380px; height: calc(100vh - 182px); margin: 0 auto; }
-.chat { height: 100%; display: grid; grid-template-rows: auto 1fr auto; border: 1px solid rgba(208,255,111,.18); border-radius: 0; color: #e5f1ed; background: var(--ink); }
+.chat-wrap { max-width: 1380px; height: calc(100vh - 182px); margin: 0 auto; display: grid; grid-template-columns: 264px minmax(0, 1fr); position: relative; }
+.chat { width: auto; max-width: none; height: 100%; min-width: 0; display: grid; grid-template-rows: auto 1fr auto; border: 1px solid rgba(208,255,111,.18); border-left: 0; border-radius: 0; color: #e5f1ed; background: var(--ink); }
+.sidebar { min-height: 0; display: flex; flex-direction: column; background: var(--ink-soft); border: 1px solid rgba(208,255,111,.18); border-right: 0; }
+.sidebar-head { min-height: 74px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,.1); }
+.sidebar-title { color: #fff; font-size: 13px; font-weight: 600; }
+.sidebar-body { flex: 1; overflow-y: auto; padding: 8px; }
+.sidebar-state { padding: 26px 12px; color: #8ba39a; font-size: 12.5px; text-align: center; }
+.sidebar-state.error { color: #ffaaa3; }
+.conv-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.conv-item { display: flex; align-items: center; gap: 6px; padding: 9px 10px; border: 1px solid transparent; cursor: pointer; color: #bad0c8; }
+.conv-item:hover { background: rgba(208,255,111,.06); }
+.conv-item.active { color: #fff; background: rgba(208,255,111,.1); border-color: rgba(208,255,111,.28); }
+.conv-main { flex: 1; min-width: 0; }
+.conv-title { display: block; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.conv-time { display: block; margin-top: 2px; color: #6f877f; font-size: 10.5px; }
+.conv-delete { flex: none; width: 26px; height: 26px; border: 0; color: #6f877f; background: transparent; cursor: pointer; opacity: 0; transition: opacity .15s ease; display: inline-flex; align-items: center; justify-content: center; }
+.conv-item:hover .conv-delete { opacity: 1; }
+.conv-delete:hover { color: #ffaaa3; }
+.conv-toggle { display: none; }
+.sidebar-backdrop { display: none; }
 .chat-head { min-height: 74px; border-color: rgba(255,255,255,.1); background: var(--ink-soft); }
 .chat .name { color: #fff; }
 .chat .sub { color: #8ba39a; }
@@ -524,4 +707,24 @@ async function send(retrying = false) {
 .input-zone { border-color: rgba(255,255,255,.1); background: #0b2c25; }
 .chip { border-radius: 0; color: #bad0c8; border-color: rgba(255,255,255,.18); background: transparent; }
 .chip:hover { color: var(--signal); border-color: var(--signal); }
+
+@media (max-width: 900px) {
+  .chat-wrap { grid-template-columns: 1fr; }
+  .chat { border-left: 1px solid rgba(208,255,111,.18); }
+  .sidebar {
+    position: fixed;
+    z-index: 120;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 280px;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    border-right: 1px solid rgba(208,255,111,.18);
+    box-shadow: 0 18px 50px rgba(3, 22, 18, 0.4);
+  }
+  .sidebar.open { transform: translateX(0); }
+  .sidebar-backdrop { position: fixed; z-index: 119; inset: 0; background: rgba(3, 22, 18, 0.5); display: block; }
+  .conv-toggle { display: inline-flex; }
+}
 </style>

@@ -15,19 +15,25 @@ import java.util.regex.Pattern;
 
 @Service
 public class MqttIngestionService {
-    private static final Pattern TOPIC_PATTERN = Pattern.compile("^device/([^/]+)/(data|heartbeat)$");
+    private static final Pattern TOPIC_PATTERN = Pattern.compile("^device/([^/]+)/(data|heartbeat|cmd_ack)$");
     private static final int MAX_PAYLOAD_LENGTH = 65_535;
 
     private final DeviceRepository deviceRepository;
     private final LightPointRepository lightPointRepository;
     private final ObjectMapper objectMapper;
+    private final DeviceCommandService commandService;
+    private final AlarmService alarmService;
 
     public MqttIngestionService(DeviceRepository deviceRepository,
                                 LightPointRepository lightPointRepository,
-                                ObjectMapper objectMapper) {
+                                ObjectMapper objectMapper,
+                                DeviceCommandService commandService,
+                                AlarmService alarmService) {
         this.deviceRepository = deviceRepository;
         this.lightPointRepository = lightPointRepository;
         this.objectMapper = objectMapper;
+        this.commandService = commandService;
+        this.alarmService = alarmService;
     }
 
     @Transactional
@@ -59,17 +65,25 @@ public class MqttIngestionService {
             }
         }
 
+        String messageType = topicMatcher.group(2);
+        if ("cmd_ack".equals(messageType)) {
+            commandService.acknowledge(deviceId, json);
+            return;
+        }
+
         long ts = readTimestamp(json.get("ts"));
         Device device = deviceRepository.findByCode(deviceId).orElse(null);
+        boolean recoveredFromOffline = device != null && "OFFLINE".equals(device.getStatus());
         if (device == null) device = newDevice(deviceId);
 
-        if ("data".equals(topicMatcher.group(2))) {
+        if ("data".equals(messageType)) {
             ingestTelemetry(device, json, payload, ts);
         } else {
             device.setLastSeen(ts);
             device.setStatus("ONLINE");
             deviceRepository.save(device);
         }
+        if (recoveredFromOffline) alarmService.recoverOfflineAlarms(deviceId);
     }
 
     private void ingestTelemetry(Device device, JsonNode json, String rawPayload, long ts) {

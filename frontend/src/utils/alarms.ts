@@ -1,0 +1,61 @@
+import type { AlarmGroup, AlarmGroupStatus, AlarmStatus, AlarmVO } from '../api/alarm'
+import type { DeviceVO } from '../api/device'
+
+/** 设备在线状态映射，key 为设备 code（与 alarm.deviceId 对应） */
+export type DeviceStatusMap = Record<string, 'ONLINE' | 'OFFLINE'>
+
+export function buildDeviceStatusMap(devices: DeviceVO[]): DeviceStatusMap {
+  const map: DeviceStatusMap = {}
+  for (const device of devices) map[device.code] = device.status
+  return map
+}
+
+/**
+ * 四态派生：最新一条原始状态 + 设备是否在线。
+ * 设备不在映射中（未知/离线）时视为离线，不会误判为已恢复/已关闭。
+ */
+export function deriveGroupStatus(
+  latestStatus: AlarmStatus,
+  deviceStatus?: 'ONLINE' | 'OFFLINE',
+): AlarmGroupStatus {
+  const online = deviceStatus === 'ONLINE'
+  return latestStatus === 'OPEN' ? (online ? 'RECOVERED' : 'OPEN') : online ? 'CLOSED' : 'ACKED'
+}
+
+/** 按“设备 + 类型”聚合原始告警，折叠重复故障为一条 */
+export function aggregateAlarms(alarms: AlarmVO[], deviceStatusMap: DeviceStatusMap): AlarmGroup[] {
+  const byKey = new Map<string, AlarmVO[]>()
+  for (const alarm of alarms) {
+    const key = JSON.stringify([alarm.deviceId, alarm.type])
+    const bucket = byKey.get(key)
+    if (bucket) bucket.push(alarm)
+    else byKey.set(key, [alarm])
+  }
+
+  const groups: AlarmGroup[] = []
+  for (const bucket of byKey.values()) {
+    bucket.sort((left, right) => left.ts - right.ts)
+    const latest = bucket[bucket.length - 1]
+    groups.push({
+      deviceId: latest.deviceId,
+      type: latest.type,
+      level: latest.level,
+      message: latest.message,
+      firstTs: bucket[0].ts,
+      lastTs: latest.ts,
+      count: bucket.length,
+      status: deriveGroupStatus(latest.status, deviceStatusMap[latest.deviceId]),
+      openIds: bucket.filter((alarm) => alarm.status === 'OPEN').map((alarm) => alarm.id),
+      latest,
+    })
+  }
+  groups.sort((left, right) => right.lastTs - left.lastTs)
+  return groups
+}
+
+/** 按派生状态统计聚合条目数量 */
+export function statusCounts(groups: AlarmGroup[]): Record<AlarmGroupStatus, number> {
+  const counts: Record<AlarmGroupStatus, number> = { OPEN: 0, RECOVERED: 0, ACKED: 0, CLOSED: 0 }
+  for (const group of groups) counts[group.status]++
+  return counts
+}

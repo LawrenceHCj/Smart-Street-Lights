@@ -39,6 +39,20 @@ export function listDevices(config?: AxiosRequestConfig): Promise<DeviceVO[]> {
   return request.get('/devices', config)
 }
 
+export interface HealthAnomaly {
+  issue: string
+  reason: string
+  deduct: number
+}
+
+export interface DeviceHealthReport {
+  id: number | null
+  deviceCode: string
+  healthScore: number
+  anomalies: HealthAnomaly[]
+  createdAt: string
+}
+
 export function getOverview(config?: AxiosRequestConfig): Promise<DashboardOverview> {
   return request.get('/dashboard/overview', config)
 }
@@ -49,4 +63,16 @@ export function getHistory(deviceId: string, start: number, end: number, config?
 
 export function getCurrentLight(deviceId: string, config?: AxiosRequestConfig): Promise<CurrentLight> {
   return request.get(`/devices/${deviceId}/light`, config)
+}
+
+export function listLatestDeviceHealth(config?: AxiosRequestConfig): Promise<DeviceHealthReport[]> {
+  return request.get('/devices/health/latest', config)
+}
+
+export function getDeviceHealthHistory(deviceId: string, config?: AxiosRequestConfig): Promise<DeviceHealthReport[]> {
+  return request.get(`/devices/${deviceId}/health`, config)
+}
+
+export function evaluateDeviceHealth(deviceId: string, config?: AxiosRequestConfig): Promise<DeviceHealthReport> {
+  return request.post(`/devices/${deviceId}/health/evaluate`, undefined, config)
 }

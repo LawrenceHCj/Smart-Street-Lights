@@ -24,12 +24,17 @@ class MqttIngestionServiceTest {
     private DeviceRepository deviceRepository;
     @Mock
     private LightPointRepository lightPointRepository;
+    @Mock
+    private DeviceCommandService commandService;
+    @Mock
+    private AlarmService alarmService;
 
     private MqttIngestionService service;
 
     @BeforeEach
     void setUp() {
-        service = new MqttIngestionService(deviceRepository, lightPointRepository, new ObjectMapper());
+        service = new MqttIngestionService(deviceRepository, lightPointRepository, new ObjectMapper(),
+                commandService, alarmService);
     }
 
     @Test
@@ -107,5 +112,13 @@ class MqttIngestionServiceTest {
                 .hasMessageContaining("lux 必须是数值");
         verify(deviceRepository, never()).save(any());
         verify(lightPointRepository, never()).save(any());
+    }
+
+    @Test
+    void routesCommandAcknowledgementWithoutCreatingTelemetry() throws Exception {
+        service.ingest("device/SL-001/cmd_ack", "{\"commandId\":\"cmd-1\",\"status\":\"SUCCESS\"}");
+
+        verify(commandService).acknowledge(eq("SL-001"), any());
+        verifyNoInteractions(deviceRepository, lightPointRepository);
     }
 }

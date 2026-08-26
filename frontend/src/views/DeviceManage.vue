@@ -12,8 +12,14 @@
 
     <NotReadyBanner
       v-if="!ready"
-      text="设备增删接口尚未由后端实现（约定 POST/DELETE /api/devices），当前仅展示设备列表；添加 / 解绑操作不可用。"
+      text="设备管理接口当前不可用，添加与解绑操作已暂停；设备列表仍可继续查看。"
     />
+
+    <div v-if="healthLoadFailed" class="health-warning" role="status">
+      <el-icon><Warning /></el-icon>
+      <span>健康报告暂未载入，设备基础信息不受影响。</span>
+      <el-button text type="primary" @click="loadHealth">重试</el-button>
+    </div>
 
     <div class="panel">
       <div class="panel-head">
@@ -51,13 +57,33 @@
               <span v-if="row.latestLux != null" class="lux-unit">Lux</span>
             </template>
           </el-table-column>
+          <el-table-column label="健康评分" width="132" align="right">
+            <template #default="{ row }">
+              <button
+                class="health-trigger"
+                :class="healthTone(healthByDevice[row.code]?.healthScore)"
+                type="button"
+                :aria-label="`${row.code} 健康报告：${healthText(healthByDevice[row.code])}`"
+                @click="openHealth(row)"
+              >
+                <template v-if="healthByDevice[row.code]">
+                  <span class="health-score num">{{ healthByDevice[row.code].healthScore }}</span>
+                  <span>{{ healthLabel(healthByDevice[row.code].healthScore) }}</span>
+                </template>
+                <template v-else>
+                  <span>待巡检</span>
+                </template>
+              </button>
+            </template>
+          </el-table-column>
           <el-table-column label="最后在线" width="140" align="right">
             <template #default="{ row }">
               <span class="last num">{{ time(row.lastSeen) }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="110" align="right" fixed="right">
+          <el-table-column label="操作" width="160" align="right" fixed="right">
             <template #default="{ row }">
+              <el-button size="small" text type="primary" @click="openHealth(row)">报告</el-button>
               <el-button
                 size="small"
                 text
@@ -75,6 +101,86 @@
         </el-table>
       </div>
     </div>
+
+    <el-drawer
+      v-model="healthVisible"
+      :title="`${selectedCode} · 健康报告`"
+      size="min(480px, 100%)"
+      class="health-drawer"
+    >
+      <div class="health-detail" aria-live="polite">
+        <div v-if="healthLoading" class="health-state">
+          <el-icon class="is-loading"><Loading /></el-icon>
+          <span>正在读取健康报告…</span>
+        </div>
+
+        <template v-else-if="selectedReport">
+          <section class="health-overview" :class="healthTone(selectedReport.healthScore)" aria-labelledby="health-overview-title">
+            <div>
+              <div id="health-overview-title" class="section-kicker">综合健康分</div>
+              <div class="health-total num">{{ selectedReport.healthScore }}<span>/ 100</span></div>
+              <div class="health-grade">{{ healthLabel(selectedReport.healthScore) }}</div>
+            </div>
+            <div class="report-time">
+              <span>报告生成</span>
+              <strong class="num">{{ reportTime(selectedReport.createdAt) }}</strong>
+            </div>
+          </section>
+
+          <section class="report-section" aria-labelledby="anomaly-title">
+            <div class="report-section-head">
+              <div>
+                <div class="section-kicker">诊断依据</div>
+                <h2 id="anomaly-title">异常指标</h2>
+              </div>
+              <span class="anomaly-count num">{{ selectedReport.anomalies.length }} 项</span>
+            </div>
+            <ul v-if="selectedReport.anomalies.length" class="anomaly-list">
+              <li v-for="(item, index) in selectedReport.anomalies" :key="`${item.issue}-${index}`">
+                <div class="anomaly-main">
+                  <strong>{{ item.issue }}</strong>
+                  <span class="deduct num">-{{ item.deduct }}</span>
+                </div>
+                <p>{{ item.reason }}</p>
+              </li>
+            </ul>
+            <div v-else class="all-clear">
+              <el-icon><CircleCheck /></el-icon>
+              <div><strong>本次巡检未发现异常</strong><span>设备关键电气指标均在规则阈值内。</span></div>
+            </div>
+          </section>
+
+          <section class="report-section" aria-labelledby="history-title">
+            <div class="report-section-head">
+              <div>
+                <div class="section-kicker">最近 30 次</div>
+                <h2 id="history-title">评分记录</h2>
+              </div>
+            </div>
+            <ol class="history-list">
+              <li v-for="report in healthHistory.slice(0, 8)" :key="report.id ?? report.createdAt">
+                <span class="num">{{ reportTime(report.createdAt) }}</span>
+                <span class="history-grade" :class="healthTone(report.healthScore)">{{ healthLabel(report.healthScore) }}</span>
+                <strong class="num">{{ report.healthScore }}</strong>
+              </li>
+            </ol>
+          </section>
+        </template>
+
+        <div v-else class="health-state empty">
+          <el-icon><DataAnalysis /></el-icon>
+          <strong>{{ healthDetailError ? '健康报告读取失败' : '尚无健康报告' }}</strong>
+          <span>{{ healthDetailError ? '请重试或稍后再查看。' : '立即执行一次体检即可生成首份评分。' }}</span>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="drawer-actions">
+          <span>基于设备最新遥测数据计算</span>
+          <el-button :icon="Refresh" type="primary" :loading="evaluating" @click="runEvaluation">立即体检</el-button>
+        </div>
+      </template>
+    </el-drawer>
 
     <el-dialog v-model="addVisible" title="添加路灯设备" width="min(420px, calc(100vw - 32px))" class="device-dialog">
       <el-form label-position="top" @submit.prevent="submitAdd">
@@ -103,11 +209,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
-import { ReadingLamp, Plus } from '@element-plus/icons-vue'
+import { computed, ref, reactive, onMounted } from 'vue'
+import { CircleCheck, DataAnalysis, Loading, Plus, ReadingLamp, Refresh, Warning } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { listDevices } from '../api/device'
-import type { DeviceVO } from '../api/device'
+import {
+  evaluateDeviceHealth,
+  getDeviceHealthHistory,
+  listDevices,
+  listLatestDeviceHealth,
+} from '../api/device'
+import type { DeviceHealthReport, DeviceVO } from '../api/device'
 import { addDevice, removeDevice } from '../api/deviceManage'
 import { probe } from '../api/helper'
 import NotReadyBanner from '../components/NotReadyBanner.vue'
@@ -116,7 +227,17 @@ const devices = ref<DeviceVO[]>([])
 const ready = ref(true)
 const addVisible = ref(false)
 const adding = ref(false)
+const healthByDevice = ref<Record<string, DeviceHealthReport>>({})
+const healthLoadFailed = ref(false)
+const healthVisible = ref(false)
+const healthLoading = ref(false)
+const healthDetailError = ref(false)
+const evaluating = ref(false)
+const selectedCode = ref('')
+const healthHistory = ref<DeviceHealthReport[]>([])
 const form = reactive<{ code: string; location: string; longitude?: number; latitude?: number }>({ code: '', location: '' })
+
+const selectedReport = computed(() => healthHistory.value[0] ?? healthByDevice.value[selectedCode.value] ?? null)
 
 const pad = (n: number) => String(n).padStart(2, '0')
 function time(ts: number | null) {
@@ -130,6 +251,68 @@ async function load() {
     devices.value = await listDevices()
   } catch {
     // 拦截器已统一提示
+  }
+}
+
+async function loadHealth() {
+  healthLoadFailed.value = false
+  try {
+    const reports = await listLatestDeviceHealth({ silent: true })
+    healthByDevice.value = Object.fromEntries(reports.map((report) => [report.deviceCode, report]))
+  } catch {
+    healthLoadFailed.value = true
+  }
+}
+
+function healthTone(score?: number) {
+  if (score == null) return 'pending'
+  if (score >= 90) return 'healthy'
+  if (score >= 75) return 'attention'
+  return 'risk'
+}
+
+function healthLabel(score: number) {
+  if (score >= 90) return '健康'
+  if (score >= 75) return '关注'
+  return '风险'
+}
+
+function healthText(report?: DeviceHealthReport) {
+  return report ? `${report.healthScore} 分，${healthLabel(report.healthScore)}` : '尚无评分'
+}
+
+function reportTime(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
+async function openHealth(row: DeviceVO) {
+  selectedCode.value = row.code
+  healthVisible.value = true
+  healthLoading.value = true
+  healthDetailError.value = false
+  healthHistory.value = []
+  try {
+    healthHistory.value = await getDeviceHealthHistory(row.code, { silent: true })
+  } catch {
+    healthDetailError.value = true
+  } finally {
+    healthLoading.value = false
+  }
+}
+
+async function runEvaluation() {
+  if (!selectedCode.value) return
+  evaluating.value = true
+  try {
+    const report = await evaluateDeviceHealth(selectedCode.value)
+    healthHistory.value = [report, ...healthHistory.value.filter((item) => item.id !== report.id)]
+    healthByDevice.value = { ...healthByDevice.value, [report.deviceCode]: report }
+    healthDetailError.value = false
+    ElMessage.success(`${selectedCode.value} 体检完成：${report.healthScore} 分`)
+  } finally {
+    evaluating.value = false
   }
 }
 
@@ -184,7 +367,10 @@ async function onUnbind(row: DeviceVO) {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  void load()
+  void loadHealth()
+})
 </script>
 
 <style scoped>
@@ -272,6 +458,100 @@ onMounted(load)
   color: var(--text-muted);
   font-size: 12.5px;
 }
+.health-warning {
+  min-height: 44px;
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border-left: 3px solid var(--warn);
+  color: var(--text-secondary);
+  background: var(--warn-dim);
+}
+.health-warning > span {
+  flex: 1;
+}
+.health-warning > .el-icon {
+  color: #765500;
+}
+.health-warning { color: #765500; }
+.health-trigger {
+  min-width: 76px;
+  min-height: 30px;
+  padding: 3px 8px;
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 11.5px;
+}
+.health-trigger:hover { filter: brightness(.92); }
+.health-trigger.healthy, .history-grade.healthy { color: var(--ok); background: var(--ok-dim); }
+.health-trigger.attention, .history-grade.attention { color: #765500; background: var(--warn-dim); }
+.health-trigger.risk, .history-grade.risk { color: #b42318; background: var(--danger-dim); }
+.health-trigger.pending { color: var(--text-muted); border-style: dashed; background: var(--bg-surface-2); }
+.health-score { font-size: 14px; font-weight: 700; }
+.health-detail { min-height: 280px; }
+.health-state {
+  min-height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: var(--text-muted);
+}
+.health-state.empty { flex-direction: column; text-align: center; }
+.health-state.empty > .el-icon { font-size: 28px; color: var(--accent-bright); }
+.health-state.empty strong { color: var(--text-primary); }
+.health-overview {
+  min-height: 148px;
+  padding: 22px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  border-left: 5px solid currentColor;
+  background: var(--bg-surface-2);
+}
+.health-overview.healthy { color: var(--ok); background: var(--ok-dim); }
+.health-overview.attention { color: #765500; background: var(--warn-dim); }
+.health-overview.risk { color: #b42318; background: var(--danger-dim); }
+.section-kicker { color: var(--text-muted); font: 10px var(--font-data); letter-spacing: .1em; text-transform: uppercase; }
+.health-total { margin-top: 8px; font-size: 48px; font-weight: 720; line-height: 1; }
+.health-total span { margin-left: 5px; color: var(--text-muted); font-size: 12px; font-weight: 500; }
+.health-grade { margin-top: 7px; font-weight: 650; }
+.report-time { display: flex; flex-direction: column; align-items: flex-end; color: var(--text-muted); font-size: 11px; }
+.report-time strong { color: var(--text-secondary); font-size: 12px; }
+.report-section { padding: 22px 0; border-bottom: 1px solid var(--border-subtle); }
+.report-section-head, .anomaly-main { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.report-section h2 { margin: 3px 0 0; font-size: 16px; }
+.anomaly-count { color: var(--text-muted); font-size: 11px; }
+.anomaly-list, .history-list { margin: 16px 0 0; padding: 0; list-style: none; }
+.anomaly-list { display: grid; gap: 9px; }
+.anomaly-list li { padding: 12px 14px; border-left: 3px solid var(--danger); background: var(--danger-dim); }
+.anomaly-list strong { color: var(--text-primary); }
+.anomaly-list p { margin: 5px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.55; }
+.deduct { color: #b42318; font-weight: 700; }
+.all-clear { margin-top: 16px; padding: 14px; display: flex; align-items: center; gap: 12px; color: var(--ok); background: var(--ok-dim); }
+.all-clear > .el-icon { font-size: 22px; }
+.all-clear div { display: flex; flex-direction: column; }
+.all-clear strong { color: var(--text-primary); }
+.all-clear span { color: var(--text-secondary); font-size: 12px; }
+.history-list li { min-height: 38px; display: grid; grid-template-columns: 1fr auto 34px; align-items: center; gap: 12px; border-top: 1px solid var(--border-subtle); color: var(--text-muted); font-size: 11.5px; }
+.history-list strong { color: var(--text-primary); text-align: right; }
+.history-grade { min-width: 42px; padding: 2px 6px; text-align: center; }
+.drawer-actions { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.drawer-actions > span { color: var(--text-muted); font-size: 11.5px; }
+.drawer-actions :deep(.el-button--primary) {
+  --el-button-bg-color: var(--ink);
+  --el-button-border-color: var(--ink);
+  --el-button-hover-bg-color: var(--accent-deep);
+  --el-button-hover-border-color: var(--accent-deep);
+}
 .coordinate-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -296,6 +576,10 @@ onMounted(load)
     grid-template-columns: 1fr;
     gap: 0;
   }
+  .health-overview { align-items: flex-start; flex-direction: column; }
+  .report-time { align-items: flex-start; }
+  .drawer-actions > span { display: none; }
+  .drawer-actions .el-button { width: 100%; }
 }
 /* Asset register — continuous ledger, not a card stack */
 .dev-manage { max-width: 1640px; }
