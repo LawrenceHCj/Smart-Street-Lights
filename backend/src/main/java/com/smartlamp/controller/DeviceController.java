@@ -5,6 +5,7 @@ import com.smartlamp.dto.ApiResponse;
 import com.smartlamp.dto.ControlRequest;
 import com.smartlamp.dto.ControlResultDTO;
 import com.smartlamp.dto.DeviceDTO;
+import com.smartlamp.dto.DeviceHealthDTO;
 import com.smartlamp.dto.LightDataDTO;
 import com.smartlamp.dto.SwitchLightRequest;
 import com.smartlamp.dto.UpdateDeviceRequest;
@@ -12,6 +13,7 @@ import com.smartlamp.entity.Device;
 import com.smartlamp.entity.DeviceCommand;
 import com.smartlamp.service.DeviceCommandService;
 import com.smartlamp.service.DeviceService;
+import com.smartlamp.service.DeviceHealthService;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -21,15 +23,39 @@ import java.util.List;
 public class DeviceController {
     private final DeviceService deviceService;
     private final DeviceCommandService commandService;
+    private final DeviceHealthService healthService;
 
-    public DeviceController(DeviceService deviceService, DeviceCommandService commandService) {
+    public DeviceController(DeviceService deviceService, DeviceCommandService commandService,
+                            DeviceHealthService healthService) {
         this.deviceService = deviceService;
         this.commandService = commandService;
+        this.healthService = healthService;
     }
 
     @GetMapping
     public ApiResponse<List<DeviceDTO>> listDevices() {
         return ApiResponse.success(deviceService.getAllDeviceDTOs());
+    }
+
+    @GetMapping("/health/latest")
+    public ApiResponse<List<DeviceHealthDTO>> listLatestHealthReports() {
+        return ApiResponse.success(healthService.getLatestReports());
+    }
+
+    @GetMapping("/{deviceId}/health")
+    public ApiResponse<List<DeviceHealthDTO>> getHealthHistory(@PathVariable String deviceId) {
+        if (deviceService.getDeviceByCode(deviceId) == null) {
+            return ApiResponse.error(404, "设备不存在");
+        }
+        return ApiResponse.success(healthService.getHistory(deviceId));
+    }
+
+    @PostMapping("/{deviceId}/health/evaluate")
+    public ApiResponse<DeviceHealthDTO> evaluateHealth(@PathVariable String deviceId) {
+        DeviceHealthDTO report = healthService.evaluateDeviceHealth(deviceId);
+        return report == null
+                ? ApiResponse.error(404, "设备不存在")
+                : ApiResponse.success(report);
     }
 
     @GetMapping("/{deviceId}/light")

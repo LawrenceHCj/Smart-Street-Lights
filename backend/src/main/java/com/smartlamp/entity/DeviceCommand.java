@@ -23,14 +23,14 @@ public class DeviceCommand {
     @Column(name = "device_code", nullable = false)
     private String deviceCode;     // 设备编号
 
-    @Column(name = "created_at", nullable = false)
+    @Column(name = "action", nullable = false)
     private String action;         // ON / OFF
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private CommandStatus status = CommandStatus.DISPATCHED;
 
-    @Column(nullable = false)
+    @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
     @Column(name = "updated_at")
