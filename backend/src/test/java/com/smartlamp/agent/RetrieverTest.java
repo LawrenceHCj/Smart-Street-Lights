@@ -61,4 +61,47 @@ class RetrieverTest {
         assertThat(retriever.retrieve("   ")).isEmpty();
         assertThat(retriever.retrieve(null)).isEmpty();
     }
+
+    // ============ 智能体使用类条目（知识库更新：覆盖智能助手问答） ============
+
+    @Test
+    void 口语化开灯请求命中智能助手控制流程() {
+        List<Retriever.KbMatch> results = newRetriever().retrieve("帮我打开路灯");
+
+        assertThat(results).isNotEmpty();
+        assertThat(results.get(0).entry().getId()).isEqualTo("kb-agent-control-flow");
+    }
+
+    @Test
+    void 确认后灯没亮命中控制结果状态说明() {
+        List<Retriever.KbMatch> results = newRetriever().retrieve("确认后灯没亮");
+
+        assertThat(results).extracting(m -> m.entry().getId())
+                .contains("kb-agent-result-status");
+    }
+
+    @Test
+    void 批量关灯问题命中能力边界条目() {
+        List<Retriever.KbMatch> results = newRetriever().retrieve("你能批量关灯吗", 5);
+
+        assertThat(results).extracting(m -> m.entry().getId())
+                .contains("kb-agent-capability-boundary");
+    }
+
+    @Test
+    void 智能助手能做什么命中能力边界() {
+        List<Retriever.KbMatch> results = newRetriever().retrieve("智能助手能做什么");
+
+        assertThat(results).extracting(m -> m.entry().getId())
+                .contains("kb-agent-capability-boundary");
+    }
+
+    @Test
+    void 供电数据采集条目已修订支持电压电流() {
+        List<Retriever.KbMatch> results = newRetriever().retrieve("设备电压电流", 5);
+
+        KnowledgeEntry entry = results.stream().map(Retriever.KbMatch::entry)
+                .filter(e -> "kb-power-abnormal".equals(e.getId())).findFirst().orElseThrow();
+        assertThat(entry.getContent()).contains("voltage").doesNotContain("未采集");
+    }
 }

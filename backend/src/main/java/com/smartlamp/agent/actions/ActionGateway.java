@@ -8,8 +8,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 // Action Gateway：Agent 一切写操作的唯一出口。
 // 执行前依次检查：存在性 → 有效期 → 风险等级 → 确认状态（HIGH_WRITE 与未确认 Action 在此被拦截）。
-// 检查全部通过后才会查找业务执行器；本阶段未注册任何执行器，不会触碰任何业务 Service / MQTT / 数据库写操作。
-// 安全红线：状态不是 CONFIRMED 的 Action 绝不会到达执行器（"未确认 Action 绝不能调用正式 Service"）。
+// 检查全部通过后才会查找业务执行器；安全红线：状态不是 CONFIRMED 的 Action 绝不会到达执行器。
+// 执行结果如实映射终态：SUCCESS 仅当执行器报告 DEVICE_CONFIRMED（已收到设备回执）；
+// 未收到回执只能 COMMAND_ACCEPTED，绝不标记成功。
 @Component
 public class ActionGateway {
 
@@ -45,20 +46,36 @@ public class ActionGateway {
 
         // 4. 全部检查通过，进入执行态
         actionManager.markExecuting(action.getActionId());
+        ActionExecutor executor = executors.get(action.getActionType());
+        if (executor == null) {
+            // 未接入业务执行器：协议层检查通过即视为成功
+            // （保留给 READ 类等无需业务执行的动作；控制类已由 DeviceControlExecutor 接入）
+            actionManager.markSuccess(action.getActionId(), "已通过安全网关检查（业务执行器未接入）");
+            return action;
+        }
+
+        ExecutorResult result;
         try {
-            ActionExecutor executor = executors.get(action.getActionType());
-            if (executor != null) {
-                executor.execute(action);
-                actionManager.markSuccess(action.getActionId(), "执行成功");
-            } else {
-                // 本阶段未接入业务执行器：协议层检查通过即视为成功，
-                // 真实业务执行在后续阶段接入 3号成员的正式 Service
-                actionManager.markSuccess(action.getActionId(),
-                        "已通过安全网关检查（业务执行器未接入，后续阶段连接 3号 Service）");
-            }
+            result = executor.execute(action);
         } catch (Exception e) {
             actionManager.markFailure(action.getActionId(), e.getMessage());
             throw new ActionRejectedException("Action 执行失败: " + e.getMessage(), e);
+        }
+
+        // 执行器未报告结果 → 默认成功；否则按结果如实决定终态：
+        // 只有 DEVICE_CONFIRMED（已收到设备回执）才能标记 SUCCESS；
+        // 未收到回执只能 COMMAND_ACCEPTED，绝不标记成功
+        if (result == null) {
+            actionManager.markSuccess(action.getActionId(), "执行成功");
+            return action;
+        }
+        switch (result.status()) {
+            case DEVICE_CONFIRMED -> actionManager.markSuccess(action.getActionId(), result.message());
+            case COMMAND_ACCEPTED -> actionManager.markAccepted(action.getActionId(), result.message());
+            case FAILED, TIMEOUT -> {
+                actionManager.markFailure(action.getActionId(), result.message());
+                throw new ActionRejectedException(result.message());
+            }
         }
         return action;
     }

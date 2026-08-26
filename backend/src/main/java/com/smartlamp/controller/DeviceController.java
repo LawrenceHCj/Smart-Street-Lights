@@ -2,6 +2,8 @@ package com.smartlamp.controller;
 
 import com.smartlamp.dto.ApiResponse;
 import com.smartlamp.dto.AddDeviceRequest;
+import com.smartlamp.dto.CommandStatus;
+import com.smartlamp.dto.ControlOutcome;
 import com.smartlamp.dto.DeviceDTO;
 import com.smartlamp.dto.LightDataDTO;
 import com.smartlamp.dto.SwitchLightRequest;
@@ -9,13 +11,12 @@ import com.smartlamp.dto.UpdateDeviceRequest;
 import com.smartlamp.dto.ControlRequest;
 import com.smartlamp.dto.ControlResultDTO;
 import com.smartlamp.entity.Device;
+import com.smartlamp.service.DeviceControlService;
 import com.smartlamp.service.DeviceService;
-import com.smartlamp.service.MqttPublisherService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/devices")
@@ -24,8 +25,9 @@ public class DeviceController {
     @Autowired
     private DeviceService deviceService;
 
+    // 开关灯统一走 DeviceControlService（阶段18：网页按钮与 Agent 复用同一控制入口）
     @Autowired
-    private MqttPublisherService mqttPublisherService;
+    private DeviceControlService deviceControlService;
 
     // GET /api/devices
     @GetMapping
@@ -43,17 +45,16 @@ public class DeviceController {
         return ApiResponse.success(light);
     }
 
-    // POST /api/devices/{deviceId}/switch
+    // POST /api/devices/{deviceId}/switch（payload 已统一为 {"action":"ON|OFF"} 格式，与 /control 一致）
     @PostMapping("/{deviceId}/switch")
     public ApiResponse<Void> switchLight(@PathVariable String deviceId,
                                          @RequestBody SwitchLightRequest request) {
-        if (deviceService.getDeviceByCode(deviceId) == null) {
-            return ApiResponse.error(400, "设备不存在");
+        ControlOutcome outcome = request.isOn()
+                ? deviceControlService.turnOnLight(deviceId)
+                : deviceControlService.turnOffLight(deviceId);
+        if (outcome.getStatus() == CommandStatus.FAILED || outcome.getStatus() == CommandStatus.TIMEOUT) {
+            return ApiResponse.error(400, outcome.getMessage());
         }
-        String payload = "{\"deviceId\":\"" + deviceId + "\",\"on\":" + request.isOn() + "}";
-        String topic = "device/" + deviceId + "/cmd";
-        mqttPublisherService.publish(topic, payload);
-        deviceService.updateLampStatus(deviceService.getDeviceByCode(deviceId), request.isOn() ? "ON" : "OFF");
         return ApiResponse.success(null);
     }
 
@@ -91,16 +92,16 @@ public class DeviceController {
 
     @PostMapping("/{deviceId}/control")
     public ApiResponse<ControlResultDTO> control(@PathVariable String deviceId, @RequestBody ControlRequest request) {
-        Device device = deviceService.getDeviceByCode(deviceId);
         String action = request.getAction() == null ? "" : request.getAction().trim().toUpperCase();
-        if (device == null) return ApiResponse.error(404, "device not found");
-        if (!Boolean.TRUE.equals(device.getBound())) return ApiResponse.error(400, "device is unbound");
         if (!"ON".equals(action) && !"OFF".equals(action)) return ApiResponse.error(400, "action must be ON or OFF");
-        mqttPublisherService.publish("device/" + deviceId + "/cmd", "{\"deviceId\":\"" + deviceId + "\",\"action\":\"" + action + "\"}");
-        deviceService.updateLampStatus(device, action);
-        long now = System.currentTimeMillis();
-        return ApiResponse.success(new ControlResultDTO("CMD-" + now + "-" + UUID.randomUUID().toString().substring(0, 8), deviceId,
-                action, "MANUAL", "DISPATCHED", now, "控制命令已发送"));
+        ControlOutcome outcome = "ON".equals(action)
+                ? deviceControlService.turnOnLight(deviceId)
+                : deviceControlService.turnOffLight(deviceId);
+        if (outcome.getStatus() == CommandStatus.FAILED || outcome.getStatus() == CommandStatus.TIMEOUT) {
+            return ApiResponse.error(400, outcome.getMessage());
+        }
+        return ApiResponse.success(new ControlResultDTO(outcome.getCommandId(), deviceId, action,
+                "MANUAL", "DISPATCHED", outcome.getIssuedAt(), "控制命令已发送"));
     }
 
     // DELETE /api/devices/{deviceId} 解绑设备
