@@ -1,637 +1,140 @@
 <template>
-  <div class="layout">
+  <div class="atlas-shell">
     <a class="skip-link" href="#main-content">跳到主要内容</a>
-
-    <button
-      v-if="mobileNavOpen"
-      class="nav-scrim"
-      type="button"
-      aria-label="关闭导航"
-      @click="closeMobileNav()"
-    ></button>
-
-    <aside id="app-navigation" class="aside" :class="{ 'is-open': mobileNavOpen }">
-      <div class="brand" aria-label="智慧路灯运维控制台">
-        <span class="brand-mark" aria-hidden="true">
-          <el-icon><ReadingLamp /></el-icon>
-        </span>
-        <div class="brand-text">
-          <div class="brand-name">智慧路灯</div>
-          <div class="brand-sub">城市照明运维</div>
-        </div>
-      </div>
-
-      <nav class="menu" aria-label="主导航">
-        <button
-          v-for="item in nav"
-          :key="item.path"
-          type="button"
-          class="menu-item"
-          :class="{ active: route.path === item.path }"
-          :aria-current="route.path === item.path ? 'page' : undefined"
-          @click="navigate(item.path)"
-        >
-          <el-icon class="menu-icon" aria-hidden="true"><component :is="item.icon" /></el-icon>
-          <span class="menu-label">{{ item.label }}</span>
+    <header class="command-bar">
+      <button class="wordmark" type="button" aria-label="返回运行概览" @click="navigate('/dashboard')">
+        <span class="wordmark-symbol" aria-hidden="true"><el-icon><ReadingLamp /></el-icon></span>
+        <span><strong>夜航图谱</strong><small>SMART LIGHT ATLAS</small></span>
+      </button>
+      <nav class="desktop-nav" aria-label="主导航">
+        <button v-for="item in nav" :key="item.path" type="button" :class="{ active: route.path === item.path }" :aria-current="route.path === item.path ? 'page' : undefined" @click="navigate(item.path)">
+          <span class="nav-index num">{{ item.index }}</span><span>{{ item.label }}</span>
         </button>
       </nav>
-
-      <div class="aside-foot" :class="{ offline: !isOnline }" aria-live="polite">
-        <span class="status-dot" :class="isOnline ? 'online' : 'offline'"></span>
-        <span class="foot-text">{{ isOnline ? '网络连接正常' : '网络连接中断' }}</span>
-        <span class="foot-ver num">v0.1</span>
-      </div>
-    </aside>
-
-    <div class="body" :inert="mobileNavOpen || undefined">
-      <header class="header">
-        <div class="header-left">
-          <button
-            ref="navToggleRef"
-            class="nav-toggle"
-            type="button"
-            :aria-expanded="mobileNavOpen"
-            aria-controls="app-navigation"
-            @click="toggleMobileNav"
-          >
-            <el-icon aria-hidden="true"><Menu /></el-icon>
-            <span>导航</span>
+      <div class="command-meta">
+        <div class="network-state" :class="{ offline: !isOnline }" aria-live="polite"><span class="status-dot" :class="isOnline ? 'online' : 'offline'"></span><span>{{ isOnline ? '系统在线' : '网络离线' }}</span></div>
+        <time class="clock num" :datetime="clockIso">{{ fullClock }}</time>
+        <button class="meta-action" type="button" aria-label="打开告警中心" @click="navigate('/alarms')"><el-icon><Bell /></el-icon></button>
+        <button class="logout-action" type="button" aria-label="退出登录" @click="logout"><el-icon><SwitchButton /></el-icon><span>退出</span></button>
+        <div ref="accountMenuRef" class="account-menu">
+          <button class="user-trigger" type="button" aria-label="打开用户菜单" aria-controls="account-menu-panel" :aria-expanded="accountMenuOpen" @click="accountMenuOpen = !accountMenuOpen">
+            <span class="avatar">{{ currentUser[0]?.toUpperCase() ?? 'U' }}</span>
+            <span class="user-copy"><strong>{{ currentUser }}</strong><small>运维席位</small></span><el-icon class="account-arrow" :class="{ open: accountMenuOpen }"><ArrowDown /></el-icon>
           </button>
-          <div class="header-title">
-            <span class="header-context">照明运维</span>
-            <span class="header-current">{{ route.meta.title }}</span>
+          <div v-if="accountMenuOpen" id="account-menu-panel" class="account-menu-panel" role="menu">
+            <div class="account-menu-head"><strong>{{ currentUser }}</strong><span>当前运维席位</span></div>
+            <button type="button" role="menuitem" @click="navigate('/users')"><el-icon><User /></el-icon><span>用户与权限</span></button>
+            <button type="button" role="menuitem" class="danger" @click="logout"><el-icon><SwitchButton /></el-icon><span>退出登录</span></button>
           </div>
         </div>
-
-        <div class="header-right">
-          <time class="clock num" :datetime="clockIso">{{ fullClock }}</time>
-          <span class="divider" aria-hidden="true"></span>
-          <div class="live" :class="{ offline: !isOnline }" aria-live="polite">
-            <span class="status-dot" :class="isOnline ? 'online' : 'offline'"></span>
-            <span>{{ isOnline ? '网络在线' : '网络离线' }}</span>
-          </div>
-          <span class="divider" aria-hidden="true"></span>
-          <el-tooltip content="打开告警中心" placement="bottom">
-            <button class="header-icon" type="button" aria-label="打开告警中心" @click="navigate('/alarms')">
-              <el-icon aria-hidden="true"><Bell /></el-icon>
-            </button>
-          </el-tooltip>
-          <span class="user-avatar" aria-hidden="true">{{ currentUser[0]?.toUpperCase() ?? 'U' }}</span>
-          <span class="user-name">{{ currentUser }}</span>
-          <el-tooltip content="退出登录" placement="bottom">
-            <button class="header-icon logout" type="button" aria-label="退出登录" @click="logout">
-              <el-icon aria-hidden="true"><SwitchButton /></el-icon>
-            </button>
-          </el-tooltip>
-        </div>
-      </header>
-
-      <main id="main-content" class="main" tabindex="-1">
-        <router-view />
-      </main>
+      </div>
+    </header>
+    <div class="context-strip">
+      <div><span class="context-kicker">CITY LIGHTING / {{ route.name }}</span><strong>{{ route.meta.title }}</strong></div>
+      <div class="context-coordinate num" aria-hidden="true">29.5934° N · 106.2980° E</div>
     </div>
+    <main id="main-content" ref="mainRef" class="atlas-main" tabindex="-1"><router-view /></main>
+    <nav class="mobile-dock" aria-label="移动端主导航">
+      <button v-for="item in mobileNav" :key="item.path" type="button" :class="{ active: route.path === item.path }" :aria-current="route.path === item.path ? 'page' : undefined" @click="navigate(item.path)">
+        <el-icon><component :is="item.icon" /></el-icon><span>{{ item.shortLabel }}</span>
+      </button>
+      <el-dropdown trigger="click" placement="top-end" @command="onMoreCommand">
+        <button type="button" :class="{ active: moreActive }" aria-label="更多功能"><el-icon><MoreFilled /></el-icon><span>更多</span></button>
+        <template #dropdown><el-dropdown-menu><el-dropdown-item v-for="item in moreNav" :key="item.path" :command="item.path">{{ item.label }}</el-dropdown-item><el-dropdown-item divided command="logout">退出登录</el-dropdown-item></el-dropdown-menu></template>
+      </el-dropdown>
+    </nav>
   </div>
 </template>
 
 <script setup lang="ts">
-import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import {
-  Bell,
-  ChatDotRound,
-  DataBoard,
-  Menu,
-  Operation,
-  ReadingLamp,
-  Sunny,
-  SwitchButton,
-  Tools,
-  User,
-} from '@element-plus/icons-vue'
+import { ArrowDown, Bell, ChatDotRound, DataBoard, MoreFilled, Operation, ReadingLamp, Sunny, SwitchButton, Tools, User } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
-const mobileNavOpen = ref(false)
-const navToggleRef = ref<HTMLButtonElement>()
 const isOnline = ref(navigator.onLine)
 const fullClock = ref('')
 const clockIso = ref('')
+const currentUser = localStorage.getItem('username') || '用户'
+const mainRef = ref<HTMLElement>()
+const accountMenuRef = ref<HTMLElement>()
+const accountMenuOpen = ref(false)
 let timer: ReturnType<typeof setInterval> | null = null
 
-// 当前登录用户：登录时写入 localStorage，退出时清理
-const currentUser = localStorage.getItem('username') || '用户'
-
 const nav = [
-  { path: '/dashboard', label: '运行概览', icon: DataBoard },
-  { path: '/monitor', label: '实时监控', icon: Sunny },
-  { path: '/control', label: '灯控管理', icon: Operation },
-  { path: '/alarms', label: '告警中心', icon: Bell },
-  { path: '/devices', label: '设备管理', icon: Tools },
-  { path: '/chat', label: '智能助手', icon: ChatDotRound },
-  { path: '/users', label: '用户管理', icon: User },
+  { index: '01', path: '/dashboard', label: '全域态势', shortLabel: '态势', icon: DataBoard },
+  { index: '02', path: '/monitor', label: '光照脉络', shortLabel: '监测', icon: Sunny },
+  { index: '03', path: '/control', label: '策略控制', shortLabel: '控制', icon: Operation },
+  { index: '04', path: '/alarms', label: '事件中枢', shortLabel: '事件', icon: Bell },
+  { index: '05', path: '/devices', label: '资产编目', shortLabel: '设备', icon: Tools },
+  { index: '06', path: '/chat', label: '智能研判', shortLabel: '助手', icon: ChatDotRound },
+  { index: '07', path: '/users', label: '席位权限', shortLabel: '用户', icon: User },
 ]
+const mobileNav = nav.slice(0, 4)
+const moreNav = nav.slice(4)
+const moreActive = computed(() => moreNav.some((item) => item.path === route.path))
 
-function tick() {
-  const d = new Date()
-  const p = (n: number) => String(n).padStart(2, '0')
-  fullClock.value = `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
-  clockIso.value = d.toISOString()
-}
-
-function updateNetworkStatus() {
-  isOnline.value = navigator.onLine
-}
-
-function toggleMobileNav() {
-  mobileNavOpen.value ? closeMobileNav() : openMobileNav()
-}
-
-async function openMobileNav() {
-  mobileNavOpen.value = true
-  await nextTick()
-  document.querySelector<HTMLButtonElement>('.menu-item')?.focus()
-}
-
-function closeMobileNav({ restoreFocus = true } = {}) {
-  mobileNavOpen.value = false
-  if (restoreFocus) nextTick(() => navToggleRef.value?.focus())
-}
-
-function onKeydown(event: KeyboardEvent) {
-  if (!mobileNavOpen.value) return
-  if (event.key === 'Escape') {
-    closeMobileNav()
-    return
-  }
-  if (event.key !== 'Tab') return
-  const controls = Array.from(document.querySelectorAll<HTMLButtonElement>('#app-navigation button:not(:disabled)'))
-  if (!controls.length) return
-  const first = controls[0]
-  const last = controls[controls.length - 1]
-  if (event.shiftKey && document.activeElement === first) {
-    event.preventDefault()
-    last.focus()
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault()
-    first.focus()
-  }
-}
-
-function navigate(path: string) {
-  if (route.path !== path) router.push(path)
-  if (mobileNavOpen.value) closeMobileNav({ restoreFocus: false })
-}
-
-function logout() {
-  localStorage.removeItem('token')
-  localStorage.removeItem('username')
-  router.push('/login')
-}
-
-watch(
-  () => route.fullPath,
-  () => {
-    mobileNavOpen.value = false
-  },
-)
-
-onMounted(() => {
-  tick()
-  timer = setInterval(tick, 30_000)
-  window.addEventListener('online', updateNetworkStatus)
-  window.addEventListener('offline', updateNetworkStatus)
-  window.addEventListener('keydown', onKeydown)
-})
-
-onUnmounted(() => {
-  if (timer) clearInterval(timer)
-  window.removeEventListener('online', updateNetworkStatus)
-  window.removeEventListener('offline', updateNetworkStatus)
-  window.removeEventListener('keydown', onKeydown)
-})
+function tick() { const d = new Date(); const p = (n: number) => String(n).padStart(2, '0'); fullClock.value = `${p(d.getHours())}:${p(d.getMinutes())}`; clockIso.value = d.toISOString() }
+function navigate(path: string) { accountMenuOpen.value = false; if (route.path !== path) router.push(path) }
+function logout() { accountMenuOpen.value = false; localStorage.removeItem('token'); localStorage.removeItem('username'); router.push('/login') }
+function onMoreCommand(command: string) { command === 'logout' ? logout() : navigate(command) }
+function updateNetworkStatus() { isOnline.value = navigator.onLine }
+function onDocumentPointerDown(event: PointerEvent) { if (!accountMenuRef.value?.contains(event.target as Node)) accountMenuOpen.value = false }
+function onDocumentKeydown(event: KeyboardEvent) { if (event.key === 'Escape') accountMenuOpen.value = false }
+watch(() => route.fullPath, async () => { await nextTick(); mainRef.value?.scrollTo({ top: 0, behavior: 'auto' }) })
+onMounted(() => { tick(); timer = setInterval(tick, 30_000); window.addEventListener('online', updateNetworkStatus); window.addEventListener('offline', updateNetworkStatus); document.addEventListener('pointerdown', onDocumentPointerDown); document.addEventListener('keydown', onDocumentKeydown) })
+onUnmounted(() => { if (timer) clearInterval(timer); window.removeEventListener('online', updateNetworkStatus); window.removeEventListener('offline', updateNetworkStatus); document.removeEventListener('pointerdown', onDocumentPointerDown); document.removeEventListener('keydown', onDocumentKeydown) })
 </script>
 
 <style scoped>
-.layout {
-  height: 100dvh;
-  display: grid;
-  grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
-  overflow: hidden;
-}
-
-.aside {
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  color: #d9dbe1;
-  border-right: 0;
-  background: var(--bg-sidebar);
-}
-
-.brand {
-  height: 82px;
-  padding: 0 22px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: none;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.brand-mark {
-  width: 38px;
-  height: 38px;
-  display: grid;
-  place-items: center;
-  flex: none;
-  border: 0;
-  border-radius: 10px 3px 10px 3px;
-  color: #ffffff;
-  background: var(--accent);
-}
-
-.brand-mark :deep(.el-icon) {
-  font-size: 22px;
-}
-
-.brand-text {
-  min-width: 0;
-  line-height: 1.25;
-}
-
-.brand-name {
-  color: #ffffff;
-  font-size: 16px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-}
-
-.brand-sub {
-  margin-top: 3px;
-  color: #abbed1;
-  font-size: 10.5px;
-  letter-spacing: 0.09em;
-}
-
-.menu {
-  min-height: 0;
-  padding: 20px 14px;
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 8px;
-  overflow-y: auto;
-}
-
-.menu-item {
-  position: relative;
-  width: 100%;
-  min-height: 46px;
-  padding: 0 14px;
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  color: #d9dbe1;
-  background: transparent;
-  cursor: pointer;
-  text-align: left;
-  transition: color 0.16s ease, border-color 0.16s ease, background-color 0.16s ease;
-}
-
-.menu-item:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.menu-item:active {
-  background: rgba(255, 255, 255, 0.12);
-}
-
-.menu-item.active {
-  color: #ffffff;
-  border-color: rgba(76, 175, 79, 0.4);
-  background: #4caf4f;
-}
-
-.menu-item.active::before {
-  position: absolute;
-  top: 12px;
-  bottom: 12px;
-  left: -14px;
-  width: 3px;
-  border-radius: 0 4px 4px 0;
-  background: #c8e6c9;
-  content: '';
-}
-
-.menu-icon {
-  flex: none;
-  font-size: 17px;
-}
-
-.menu-label {
-  overflow: hidden;
-  font-size: 13px;
-  font-weight: 520;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.aside-foot {
-  min-height: 52px;
-  padding: 12px 16px;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  flex: none;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  color: #abbed1;
-  font-size: 11.5px;
-}
-
-.aside-foot.offline {
-  color: var(--danger);
-}
-
-.foot-text {
-  flex: 1;
-}
-
-.foot-ver {
-  color: #abbed1;
-  font-size: 10.5px;
-}
-
-.body {
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.header {
-  height: var(--header-height);
-  padding: 0 28px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex: none;
-  border-bottom: 1px solid var(--border-subtle);
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 1px 8px rgba(171, 190, 209, 0.12);
-  backdrop-filter: blur(12px);
-}
-
-.header-left,
-.header-right {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-}
-
-.header-left {
-  gap: 12px;
-}
-
-.header-right {
-  gap: 11px;
-}
-
-.nav-toggle {
-  min-height: 34px;
-  padding: 0 10px;
-  display: none;
-  align-items: center;
-  gap: 7px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  color: var(--text-primary);
-  background: var(--bg-surface);
-  cursor: pointer;
-}
-
-.nav-toggle:hover {
-  border-color: var(--border-strong);
-  background: var(--bg-surface-2);
-}
-
-.header-title {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-}
-
-.header-context {
-  color: var(--text-muted);
-  font-size: 11.5px;
-}
-
-.header-context::after {
-  margin-left: 9px;
-  color: var(--border-strong);
-  content: '/';
-}
-
-.header-current {
-  overflow: hidden;
-  color: var(--text-primary);
-  font-size: 13px;
-  font-weight: 620;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.clock {
-  color: var(--text-secondary);
-  font-size: 11.5px;
-  letter-spacing: 0.015em;
-  white-space: nowrap;
-}
-
-.divider {
-  width: 1px;
-  height: 18px;
-  flex: none;
-  background: var(--border-subtle);
-}
-
-.live {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--text-secondary);
-  font-size: 11.5px;
-  white-space: nowrap;
-}
-
-.live.offline {
-  color: var(--danger);
-}
-
-.header-icon {
-  position: relative;
-  width: 34px;
-  height: 34px;
-  padding: 0;
-  display: grid;
-  place-items: center;
-  flex: none;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
-  background: transparent;
-  cursor: pointer;
-}
-
-.header-icon:hover {
-  color: var(--text-primary);
-  border-color: var(--border-subtle);
-  background: var(--bg-surface-2);
-}
-
-.header-icon:active {
-  background: var(--bg-hover);
-}
-
-.header-icon.logout:hover {
-  color: var(--danger);
-  border-color: rgba(180, 35, 24, 0.2);
-  background: var(--danger-dim);
-}
-
-.user-avatar {
-  width: 28px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  flex: none;
-  border: 1px solid #388e3b;
-  border-radius: 50%;
-  color: #ffffff;
-  background: #4caf4f;
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.user-name {
-  max-width: 96px;
-  overflow: hidden;
-  color: var(--text-secondary);
-  font-size: 11.5px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.main {
-  min-width: 0;
-  min-height: 0;
-  padding: 28px 30px 36px;
-  flex: 1;
-  overflow-x: hidden;
-  overflow-y: auto;
-  scroll-behavior: smooth;
-}
-
-.main:focus {
-  outline: none;
-}
-
-.nav-scrim {
-  display: none;
-}
-
-@media (max-width: 900px) {
-  .layout {
-    display: block;
-  }
-
-  .aside {
-    position: fixed;
-    z-index: 1001;
-    inset: 0 auto 0 0;
-    width: min(280px, 84vw);
-    box-shadow: var(--shadow-lift);
-    transform: translateX(-102%);
-    visibility: hidden;
-    transition: transform 0.2s ease, visibility 0.2s;
-  }
-
-  .aside.is-open {
-    transform: translateX(0);
-    visibility: visible;
-  }
-
-  .nav-scrim {
-    position: fixed;
-    z-index: 1000;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    padding: 0;
-    display: block;
-    border: 0;
-    background: rgba(30, 61, 89, 0.58);
-    cursor: default;
-  }
-
-  .nav-toggle {
-    display: inline-flex;
-  }
-
-  .header {
-    height: 56px;
-    padding: 0 14px;
-  }
-
-  .main {
-    padding: 16px 16px 22px;
-  }
-}
-
-@media (max-width: 700px) {
-  .clock,
-  .user-name,
-  .header-right .divider {
-    display: none;
-  }
-
-  .header-right {
-    gap: 5px;
-  }
-
-  .live > span:last-child {
-    display: none;
-  }
-
-  .main {
-    padding: 14px 12px 20px;
-  }
-}
-
-@media (max-width: 430px) {
-  .header-context {
-    display: none;
-  }
-
-  .nav-toggle span {
-    font-size: 12px;
-  }
-
-  .user-avatar {
-    display: none;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .aside,
-  .menu-item,
-  .main {
-    scroll-behavior: auto;
-    transition-duration: 0.01ms;
-  }
-}
+.atlas-shell { height: 100%; background: var(--bg-root); }
+.command-bar { position: fixed; z-index: 100; inset: 0 0 auto; height: 72px; padding: 0 24px; display: grid; grid-template-columns: 230px minmax(0, 1fr) auto; align-items: stretch; color: #f4fff9; background: var(--ink); border-bottom: 1px solid rgba(208, 255, 111, .2); }
+.wordmark { display: flex; align-items: center; gap: 11px; padding: 0; border: 0; color: inherit; background: none; text-align: left; cursor: pointer; }
+.wordmark-symbol { width: 35px; height: 35px; display: grid; place-items: center; color: var(--signal); border: 1px solid rgba(208, 255, 111, .45); transform: rotate(45deg); }
+.wordmark-symbol :deep(.el-icon) { font-size: 19px; transform: rotate(-45deg); }
+.wordmark strong, .wordmark small { display: block; }
+.wordmark strong { font-size: 16px; letter-spacing: .08em; }
+.wordmark small { margin-top: 2px; color: #91a9a1; font: 9px/1 var(--font-data); letter-spacing: .14em; }
+.desktop-nav { min-width: 0; display: flex; justify-content: center; }
+.desktop-nav button { position: relative; min-width: 92px; padding: 0 13px; border: 0; color: #9eb2ab; background: transparent; cursor: pointer; }
+.desktop-nav button::after { content: ''; position: absolute; right: 13px; bottom: 0; left: 13px; height: 3px; background: var(--signal); transform: scaleX(0); transition: transform .18s ease; }
+.desktop-nav button:hover, .desktop-nav button.active { color: #fff; }
+.desktop-nav button.active::after { transform: scaleX(1); }
+.nav-index { display: block; margin-bottom: 3px; color: #6f877f; font-size: 9px; }
+.desktop-nav button.active .nav-index { color: var(--signal); }
+.command-meta { display: flex; align-items: center; gap: 14px; }
+.network-state { display: flex; align-items: center; gap: 7px; color: #b8c9c3; font-size: 12px; white-space: nowrap; }
+.network-state.offline { color: #ffaaa3; }
+.clock { color: var(--signal); font-size: 13px; }
+.meta-action { width: 36px; height: 36px; border: 1px solid rgba(255,255,255,.14); color: #dce9e4; background: transparent; cursor: pointer; }
+.meta-action:hover { color: var(--signal); border-color: rgba(208,255,111,.55); }
+.logout-action { height: 36px; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid rgba(255,255,255,.14); color: #c6d6d0; background: transparent; cursor: pointer; font-size: 11px; }
+.logout-action:hover { color: #fff; border-color: #ff776d; background: rgba(255,119,109,.12); }
+.user-trigger { display: flex; align-items: center; gap: 9px; padding: 0; border: 0; color: #f4fff9; background: none; cursor: pointer; }
+.account-menu { position: relative; }
+.account-arrow { transition: transform .18s ease; }
+.account-arrow.open { transform: rotate(180deg); }
+.account-menu-panel { position: absolute; z-index: 130; top: calc(100% + 14px); right: 0; width: 218px; padding: 8px; border: 1px solid rgba(208,255,111,.25); color: #eef8f4; background: #0b2c25; box-shadow: 0 22px 50px rgba(0,0,0,.28); }
+.account-menu-panel::before { content: ''; position: absolute; top: -8px; right: 14px; width: 14px; height: 14px; border-top: 1px solid rgba(208,255,111,.25); border-left: 1px solid rgba(208,255,111,.25); background: #0b2c25; transform: rotate(45deg); }
+.account-menu-head { padding: 10px 11px 12px; display: grid; gap: 2px; border-bottom: 1px solid rgba(255,255,255,.11); }
+.account-menu-head strong { color: #fff; font-size: 13px; }
+.account-menu-head span { color: #a9bdb6; font-size: 11px; }
+.account-menu-panel button { width: 100%; min-height: 40px; padding: 0 11px; display: flex; align-items: center; gap: 9px; border: 0; color: #dbe9e4; background: transparent; cursor: pointer; text-align: left; }
+.account-menu-panel button:hover, .account-menu-panel button:focus-visible { color: var(--ink); background: var(--signal); }
+.account-menu-panel button.danger { color: #ffaaa3; }
+.account-menu-panel button.danger:hover, .account-menu-panel button.danger:focus-visible { color: #fff; background: #9f3129; }
+.avatar { width: 34px; height: 34px; display: grid; place-items: center; color: var(--ink); background: var(--signal); font-weight: 800; }
+.user-copy { display: grid; text-align: left; }
+.user-copy strong { max-width: 80px; overflow: hidden; font-size: 12px; text-overflow: ellipsis; }
+.user-copy small { color: #80978f; font-size: 10px; }
+.context-strip { position: fixed; z-index: 90; top: 72px; right: 0; left: 0; height: 58px; padding: 0 28px; display: flex; align-items: center; justify-content: space-between; background: rgba(246,249,246,.94); border-bottom: 1px solid var(--border); backdrop-filter: blur(14px); }
+.context-strip > div:first-child { display: flex; align-items: baseline; gap: 14px; }
+.context-strip strong { color: var(--ink); font-size: 18px; letter-spacing: -.02em; }
+.context-kicker { color: var(--text-muted); font: 9px/1 var(--font-data); letter-spacing: .16em; text-transform: uppercase; }
+.context-coordinate { color: var(--text-muted); font-size: 10px; letter-spacing: .08em; }
+.atlas-main { height: 100vh; padding: 150px 28px 32px; overflow: auto; }
+.mobile-dock { display: none; }
+@media (max-width: 1180px) { .command-bar { grid-template-columns: 190px minmax(0,1fr) auto; padding-inline: 18px; } .desktop-nav button { min-width: 74px; padding-inline: 7px; font-size: 12px; } .desktop-nav button::after { right: 7px; left: 7px; } .network-state, .user-copy, .logout-action span { display: none; } .logout-action { width: 36px; padding: 0; justify-content: center; } }
+@media (max-width: 820px) { .command-bar { height: 62px; grid-template-columns: 1fr auto; padding: 0 16px; } .wordmark strong { font-size: 14px; } .wordmark small, .desktop-nav, .clock, .meta-action { display: none; } .context-strip { top: 62px; height: 52px; padding: 0 16px; color: #fff; border-color: rgba(208,255,111,.14); background: rgba(6,34,29,.96); } .context-strip > div:first-child { display: grid; gap: 3px; } .context-strip strong { color: #fff; font-size: 16px; } .context-kicker { color: #779188; } .context-coordinate { display: none; } .atlas-main { padding: 130px 14px 88px; background: var(--ink); } .atlas-main :deep(.page-title) { color: #f5fff8; } .atlas-main :deep(.page-desc), .atlas-main :deep(.refresh), .atlas-main :deep(.page-status) { color: #8fa79f; } .mobile-dock { position: fixed; z-index: 110; right: 10px; bottom: 10px; left: 10px; height: 66px; display: grid; grid-template-columns: repeat(5, 1fr); padding: 6px; border: 1px solid rgba(208,255,111,.18); background: rgba(6,34,29,.96); box-shadow: 0 18px 50px rgba(3,22,18,.32); backdrop-filter: blur(18px); } .mobile-dock button { width: 100%; height: 54px; display: grid; place-items: center; align-content: center; gap: 3px; border: 0; color: #829a91; background: transparent; font-size: 10px; cursor: pointer; } .mobile-dock button :deep(.el-icon) { font-size: 20px; } .mobile-dock button.active { color: var(--signal); background: rgba(208,255,111,.08); } .user-trigger :deep(.el-icon) { display: none; } }
 </style>

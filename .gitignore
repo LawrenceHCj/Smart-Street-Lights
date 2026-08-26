@@ -13,6 +13,7 @@ mvnw.cmd
 node_modules/
 
 .env
+data/migrations/
 
 # 日志、系统文件与本地计划
 *.log

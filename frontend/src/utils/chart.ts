@@ -34,8 +34,12 @@ function axisLabel(ts: number): string {
   return sameDay ? hm : `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${hm}`
 }
 
-/** 光照趋势折线：轻量蓝灰网格 + 橙色折线 + 克制面积。times 为毫秒时间戳。 */
-export function luxLineOption(times: number[], values: number[]): EChartsOption {
+/** 光照趋势折线。timeWindow 用于固定所选时间范围，避免数据稀疏时不同区间看起来完全相同。 */
+export function luxLineOption(
+  times: number[],
+  values: number[],
+  timeWindow?: { start: number; end: number },
+): EChartsOption {
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
   return {
     animation: !reducedMotion,
@@ -68,8 +72,8 @@ export function luxLineOption(times: number[], values: number[]): EChartsOption 
     },
     xAxis: {
       type: 'time',
-      min: times.length ? Math.min(...times) : undefined,
-      max: times.length ? Math.max(...times) : undefined,
+      min: timeWindow?.start ?? (times.length ? Math.min(...times) : undefined),
+      max: timeWindow?.end ?? (times.length ? Math.max(...times) : undefined),
       axisLine: { lineStyle: { color: chartColors.axis } },
       axisLabel: {
         color: chartColors.muted,

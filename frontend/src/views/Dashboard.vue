@@ -107,7 +107,7 @@
         <div class="panel-head trend-head">
           <div>
             <div id="trend-title" class="panel-title">光照趋势</div>
-            <div class="panel-caption">{{ currentCode || '未选择设备' }} · 环境照度（Lux）</div>
+            <div class="panel-caption">{{ currentCode || '未选择设备' }} · {{ selectedRangeLabel }} · 环境照度（Lux）</div>
           </div>
           <div class="trend-actions">
             <el-select
@@ -196,7 +196,7 @@ import { initLuxChart, luxLineOption } from '../utils/chart'
 import type { ChartInstance } from '../utils/chart'
 import { loadAMap } from '../utils/amap'
 
-type RangeKey = '24h' | '7d' | '30d'
+type RangeKey = '1h' | '24h' | '7d' | '30d'
 type MapFilter = 'online' | 'offline' | 'all'
 
 interface MapInstance {
@@ -228,7 +228,7 @@ interface AMapNamespace {
 const overview = ref<DashboardOverview>({ totalDevices: 0, onlineCount: 0, offlineCount: 0, avgLux: 0 })
 const devices = ref<DeviceVO[]>([])
 const currentCode = ref('SL-001')
-const range = ref<RangeKey>('24h')
+const range = ref<RangeKey>('1h')
 const mapFilter = ref<MapFilter>('all')
 const chartRef = ref<HTMLDivElement>()
 const mapRef = ref<HTMLDivElement>()
@@ -252,6 +252,7 @@ let resizeObserver: ResizeObserver | null = null
 let trendRequestId = 0
 
 const ranges: Array<{ value: RangeKey; label: string }> = [
+  { value: '1h', label: '近 1 小时' },
   { value: '24h', label: '24 小时' },
   { value: '7d', label: '近 7 天' },
   { value: '30d', label: '近 30 天' },
@@ -260,7 +261,8 @@ const ranges: Array<{ value: RangeKey; label: string }> = [
 const onlineCount = computed(() => devices.value.filter((device) => device.status === 'ONLINE').length)
 const offlineCount = computed(() => devices.value.filter((device) => device.status === 'OFFLINE').length)
 const onlineRate = computed(() => devices.value.length ? Math.round((onlineCount.value / devices.value.length) * 100) : 0)
-const rangeMs = computed(() => ({ '24h': 86_400_000, '7d': 604_800_000, '30d': 2_592_000_000 })[range.value])
+const rangeMs = computed(() => ({ '1h': 3_600_000, '24h': 86_400_000, '7d': 604_800_000, '30d': 2_592_000_000 })[range.value])
+const selectedRangeLabel = computed(() => ranges.find((item) => item.value === range.value)?.label ?? '')
 const refreshText = computed(() => {
   if (refreshing.value) return '正在刷新'
   if (!lastUpdated.value) return '每 5 秒自动刷新'
@@ -331,12 +333,13 @@ async function loadTrend() {
   }
   const requestId = ++trendRequestId
   const now = Date.now()
+  const start = now - rangeMs.value
   chartLoading.value = true
   try {
-    const history = await getHistory(code, now - rangeMs.value, now, { silent: true })
+    const history = await getHistory(code, start, now, { silent: true })
     if (requestId !== trendRequestId || code !== currentCode.value) return
     chartError.value = ''
-    renderChart(history.points)
+    renderChart(history.points, { start, end: now })
   } catch {
     if (requestId !== trendRequestId) return
     chartError.value = '趋势数据加载失败'
@@ -346,11 +349,11 @@ async function loadTrend() {
   }
 }
 
-function renderChart(points: LightPoint[]) {
+function renderChart(points: LightPoint[], timeWindow?: { start: number; end: number }) {
   if (!chartRef.value) return
   if (!chart) chart = initLuxChart(chartRef.value)
   hasChartData.value = points.length > 0
-  chart.setOption(luxLineOption(points.map((point) => point.ts), points.map((point) => point.lux)), true)
+  chart.setOption(luxLineOption(points.map((point) => point.ts), points.map((point) => point.lux), timeWindow), true)
 }
 
 function campusCenter() {
@@ -1028,5 +1031,51 @@ onUnmounted(() => {
   .spinning {
     animation: none;
   }
+}
+
+/* Night Atlas composition: map stage, telemetry rail, operations dock. */
+.command-center { max-width: 1640px; }
+.command-grid { min-height: 520px; grid-template-columns: minmax(0, 1fr) 250px; gap: 0; border: 1px solid var(--border); background: var(--bg-surface); }
+.map-panel { grid-column: 1; grid-row: 1; min-height: 520px; border: 0; border-radius: 0; box-shadow: none; }
+.metrics-rail { grid-column: 2; grid-row: 1; grid-template-rows: repeat(4, 1fr); gap: 0; border-left: 1px solid var(--border); }
+.metric.stat-card { position: relative; padding: 18px; border: 0; border-bottom: 1px solid var(--border-subtle); border-radius: 0; box-shadow: none; background: #fbfdfb; }
+.metric.stat-card:last-child { border-bottom: 0; }
+.metric.stat-card::after { content: ''; position: absolute; right: 0; bottom: 0; width: 18px; height: 18px; border-right: 2px solid var(--accent-bright); border-bottom: 2px solid var(--accent-bright); opacity: 0; }
+.metric.stat-card:hover::after { opacity: 1; }
+.metric-icon { width: 28px; height: 28px; border: 0; border-radius: 0; background: transparent !important; font-size: 18px; }
+.metric .stat-value { margin-top: 12px; color: var(--ink); font-size: 32px; }
+.metric.accent { color: var(--ink); background: var(--signal); }
+.metric.accent .metric-icon, .metric.accent .stat-sub, .metric.accent .stat-label { color: #244b3f; }
+.map-heading { top: 18px; left: 18px; border-radius: 0; background: rgba(6,34,29,.9); color: #f5fff8; backdrop-filter: blur(10px); }
+.map-heading span { color: #a9c0b8; }
+.map-tools, .map-legend { border-radius: 0; background: rgba(247,250,247,.94); }
+.lower-grid { grid-template-columns: minmax(0, 1.35fr) minmax(380px, .65fr); gap: 0; border: 1px solid var(--border); border-top: 0; background: var(--bg-surface); }
+.lower-grid > .panel { border: 0; }
+.lower-grid > .panel + .panel { border-left: 1px solid var(--border); }
+.panel-head { min-height: 66px; padding: 14px 18px; }
+.chart { height: 280px; }
+.device-row { min-height: 43px; }
+.range-switch, .range-switch button { border-radius: 0; }
+.range-switch button.active { color: var(--ink); background: var(--signal); }
+
+@media (max-width: 1080px) {
+  .command-grid { grid-template-columns: 1fr; }
+  .map-panel { grid-column: 1; grid-row: 1; min-height: 430px; }
+  .metrics-rail { grid-column: 1; grid-row: 2; grid-template-columns: repeat(4, 1fr); grid-template-rows: auto; border-top: 1px solid var(--border); border-left: 0; }
+  .metric.stat-card { min-height: 126px; border-right: 1px solid var(--border-subtle); border-bottom: 0; }
+  .lower-grid { grid-template-columns: 1fr; }
+  .lower-grid > .panel + .panel { border-top: 1px solid var(--border); border-left: 0; }
+}
+@media (max-width: 700px) {
+  .page-intro { align-items: flex-start; }
+  .page-title { font-size: 28px; }
+  .page-status { align-self: flex-start; }
+  .command-grid { border-color: rgba(208,255,111,.18); }
+  .map-panel { min-height: 430px; }
+  .metrics-rail { grid-template-columns: repeat(2, 1fr); }
+  .metric.stat-card { min-height: 112px; }
+  .metric.stat-card:nth-child(2) { border-right: 0; }
+  .metric.stat-card:nth-child(-n+2) { border-bottom: 1px solid var(--border-subtle); }
+  .lower-grid { border-top: 1px solid var(--border); }
 }
 </style>

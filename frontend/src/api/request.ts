@@ -14,6 +14,17 @@ const request = axios.create({
   timeout: 10000,
 })
 
+let redirectingToLogin = false
+
+function handleExpiredSession(requestUrl?: string) {
+  if (requestUrl === '/auth/login' || redirectingToLogin) return
+  redirectingToLogin = true
+  localStorage.removeItem('token')
+  localStorage.removeItem('username')
+  ElMessage.warning('登录已失效，请重新登录')
+  window.location.replace('/login')
+}
+
 request.interceptors.request.use((config) => {
   const token = localStorage.getItem('token')
   if (token) {
@@ -26,7 +37,8 @@ request.interceptors.response.use(
   (resp) => {
     const r = resp.data
     if (r.code !== 0) {
-      if (!resp.config.silent) ElMessage.error(r.message || '请求失败')
+      if (r.code === 401) handleExpiredSession(resp.config.url)
+      else if (!resp.config.silent) ElMessage.error(r.message || '请求失败')
       return Promise.reject(new Error(r.message || '请求失败'))
     }
     return r.data

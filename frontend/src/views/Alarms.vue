@@ -265,4 +265,14 @@ onUnmounted(() => {
     align-items: flex-start;
   }
 }
+/* Incident funnel and disposition ledger */
+.alarms { max-width: 1640px; display: grid; grid-template-columns: 240px minmax(0, 1fr); align-items: start; gap: 0; }
+.alarms > .page-intro, .alarms > .not-ready { grid-column: 1 / -1; margin-bottom: 18px; }
+.alarms .stats { grid-template-columns: 1fr; gap: 0; }
+.alarms .stat-card { min-height: 150px; border: 1px solid var(--border); border-right: 0; border-bottom: 0; border-radius: 0; box-shadow: none; }
+.alarms .stat-card:last-child { min-height: 190px; border-bottom: 1px solid var(--border); background: var(--signal); }
+.alarms > .panel { min-height: 490px; border-radius: 0; }
+.alarms .stat-value { color: var(--ink); font-size: 38px; }
+@media (max-width: 800px) { .alarms { display: flex; align-items: stretch; } .alarms > .panel { width: 100%; } .alarms .stats { grid-template-columns: repeat(3, 1fr); } .alarms .stat-card { min-height: 120px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); } .alarms .stat-card + .stat-card { border-left: 0; } .alarms .stat-card:last-child { min-height: 120px; } }
+@media (max-width: 560px) { .alarms .stats { grid-template-columns: 1fr; } .alarms .stat-card + .stat-card { border-top: 0; border-left: 1px solid var(--border); } }
 </style>

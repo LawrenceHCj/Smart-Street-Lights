@@ -332,4 +332,17 @@ onMounted(() => {
     gap: 12px;
   }
 }
+/* Dual-track strategy console */
+.control { max-width: 1640px; display: grid; grid-template-columns: minmax(360px, .7fr) minmax(0, 1.3fr); align-items: start; gap: 0; }
+.control > .page-intro { grid-column: 1 / -1; margin-bottom: 18px; }
+.control > .panel { min-height: 520px; border-radius: 0; }
+.control > .panel:nth-of-type(1) { color: #e7f4ef; border-color: var(--ink); background: var(--ink); }
+.control > .panel:nth-of-type(1) .panel-head { color: #fff; border-color: rgba(255,255,255,.12); background: var(--ink-soft); }
+.control > .panel:nth-of-type(1) .panel-title { color: #fff; }
+.control > .panel:nth-of-type(1) .panel-meta, .control > .panel:nth-of-type(1) .cfg-desc { color: #91aaa1; }
+.control > .panel:nth-of-type(2) { border-left: 0; }
+.control .cfg-row { min-height: 118px; padding: 24px; border-color: rgba(255,255,255,.11); }
+.control .cfg-title { color: var(--signal); }
+.control .cfg-actions { padding: 20px 24px; }
+@media (max-width: 980px) { .control { display: flex; align-items: stretch; } .control > .panel { width: 100%; min-height: auto; } .control > .panel:nth-of-type(2) { border-top: 0; border-left: 1px solid var(--border-subtle); } }
 </style>

@@ -267,4 +267,11 @@ onMounted(load)
     align-items: flex-start;
   }
 }
+/* Access roster */
+.users { max-width: 1320px; }
+.users .page-intro { min-height: 110px; padding: 0 4px 20px; border-bottom: 1px solid var(--border-strong); }
+.users > .panel { border-width: 0 0 1px; background: transparent; }
+.users .panel-head { padding-inline: 0; border-bottom-color: var(--border-strong); }
+.users .table-wrap { padding: 12px 0 0 44px; background-image: linear-gradient(90deg, var(--signal) 0 4px, transparent 4px); }
+.users .user-avatar { border-radius: 0; color: var(--ink); background: var(--signal); }
 </style>

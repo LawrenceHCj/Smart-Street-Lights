@@ -511,4 +511,17 @@ async function send(retrying = false) {
     animation: none;
   }
 }
+/* Full-height intelligence desk */
+.chat-wrap { max-width: 1380px; height: calc(100vh - 182px); margin: 0 auto; }
+.chat { height: 100%; display: grid; grid-template-rows: auto 1fr auto; border: 1px solid rgba(208,255,111,.18); border-radius: 0; color: #e5f1ed; background: var(--ink); }
+.chat-head { min-height: 74px; border-color: rgba(255,255,255,.1); background: var(--ink-soft); }
+.chat .name { color: #fff; }
+.chat .sub { color: #8ba39a; }
+.chat-mark, .msg-avatar { border-radius: 0; color: var(--ink); background: var(--signal); }
+.messages { background-image: linear-gradient(rgba(208,255,111,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(208,255,111,.035) 1px, transparent 1px); background-size: 28px 28px; }
+.msg.bot .msg-body { border-color: rgba(255,255,255,.1); border-radius: 0; color: #dcebe5; background: rgba(255,255,255,.055); }
+.msg.user .msg-body { border-radius: 0; color: var(--ink); background: var(--signal); }
+.input-zone { border-color: rgba(255,255,255,.1); background: #0b2c25; }
+.chip { border-radius: 0; color: #bad0c8; border-color: rgba(255,255,255,.18); background: transparent; }
+.chip:hover { color: var(--signal); border-color: var(--signal); }
 </style>

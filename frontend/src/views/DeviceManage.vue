@@ -297,4 +297,11 @@ onMounted(load)
     gap: 0;
   }
 }
+/* Asset register — continuous ledger, not a card stack */
+.dev-manage { max-width: 1640px; }
+.dev-manage .page-intro { min-height: 92px; padding: 0 4px 18px; border-bottom: 1px solid var(--border-strong); }
+.dev-manage > .panel { border-width: 0 0 1px; background: rgba(255,255,255,.72); }
+.dev-manage .panel-head { padding-inline: 0; border-bottom-color: var(--border-strong); }
+.dev-manage .table-wrap { border-left: 4px solid var(--signal-strong); }
+.dev-manage :deep(.el-table__row:hover td) { background: #eef8e9 !important; }
 </style>

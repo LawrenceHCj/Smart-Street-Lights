@@ -10,16 +10,17 @@
           </div>
         </div>
         <div class="context-copy">
-          <p class="context-kicker">城市照明运维</p>
-          <h1 id="login-title">管理控制台</h1>
-          <p>设备监控、告警处置与灯控操作统一入口</p>
+          <p class="context-kicker">CITY LIGHTING FIELD SYSTEM / 2026</p>
+          <h1 id="login-title">让城市的<br><em>夜晚可被读懂</em></h1>
+          <p>以空间为索引，将设备、光照、告警与控制策略汇入同一张城市夜航图谱。</p>
         </div>
       </header>
 
       <div class="login-card">
         <div class="form-head">
-          <h2>登录</h2>
-          <p>使用运维账号进入工作区</p>
+          <span class="form-index num">ACCESS / 01</span>
+          <h2>进入运维席位</h2>
+          <p>使用授权账号接入城市照明网络</p>
         </div>
 
         <el-form class="form" label-position="top" @submit.prevent="doLogin">
@@ -67,7 +68,7 @@
             :disabled="!username.trim() || !password"
             @click="doLogin"
           >
-            登录控制台
+            进入夜航图谱
           </el-button>
         </el-form>
 
@@ -79,7 +80,7 @@
         </div>
       </div>
     </section>
-    <p class="foot">智慧路灯 · 城市照明物联网平台</p>
+    <p class="foot">SMART LIGHT ATLAS · 城市照明物联网平台</p>
   </main>
 </template>
 
@@ -339,4 +340,28 @@ async function doLogin() {
     padding-block: 30px;
   }
 }
+/* Night Atlas gateway */
+.login { overflow: hidden; background: var(--ink); }
+.login::before { content: ''; position: fixed; inset: 0; pointer-events: none; background-image: linear-gradient(rgba(208,255,111,.055) 1px, transparent 1px), linear-gradient(90deg, rgba(208,255,111,.055) 1px, transparent 1px); background-size: 52px 52px; mask-image: linear-gradient(90deg, #000 0 60%, transparent 85%); }
+.login-shell { width: min(1480px, calc(100vw - 64px)); min-height: min(760px, calc(100vh - 80px)); grid-template-columns: minmax(0, 1.35fr) minmax(380px, .65fr); border: 1px solid rgba(208,255,111,.22); border-radius: 0; box-shadow: 0 50px 100px rgba(0,0,0,.24); }
+.product-context { position: relative; padding: 48px; color: #effaf6; background: var(--ink); }
+.product-context::after { content: '29.5934° N  /  106.2980° E'; position: absolute; right: 42px; bottom: 36px; color: #66837a; font: 10px var(--font-data); letter-spacing: .12em; }
+.mark { border-radius: 0; color: var(--ink); background: var(--signal); transform: rotate(45deg); }
+.mark :deep(.el-icon) { transform: rotate(-45deg); }
+.brand-name { color: #fff; letter-spacing: .12em; }
+.context-copy { max-width: 690px; }
+.context-copy h1 { color: #f6fff9; font-size: clamp(48px, 6.2vw, 88px); line-height: .98; letter-spacing: -.055em; }
+.context-copy h1 em { color: var(--signal); font-style: normal; font-weight: inherit; }
+.context-copy > p:last-child { max-width: 560px; color: #a2b9b1; font-size: 15px; }
+.context-kicker { color: var(--signal) !important; font: 10px var(--font-data); letter-spacing: .16em; }
+.login-card { padding: 48px; border-left: 1px solid rgba(208,255,111,.18); border-radius: 0; background: #f7faf7; }
+.form-index { display: block; margin-bottom: 18px; color: var(--accent-bright); font-size: 10px; letter-spacing: .15em; }
+.form-head h2 { color: var(--ink); font-size: 30px; }
+.login-card :deep(.el-input__wrapper) { border-radius: 0; box-shadow: 0 0 0 1px var(--border-strong) inset; }
+.login-card :deep(.el-input__wrapper.is-focus) { box-shadow: 0 0 0 2px var(--accent-bright) inset; }
+.btn { border-radius: 0; color: var(--ink); background: var(--signal); border-color: var(--signal); font-weight: 750; letter-spacing: .08em; }
+.btn:hover { color: #fff; background: var(--ink); border-color: var(--ink); }
+.demo-note { border-radius: 0; background: var(--bg-surface-2); }
+.foot { color: #6f8a81; }
+@media (max-width: 760px) { .login { overflow: auto; background: var(--ink); } .login-shell { width: 100%; min-height: 100vh; margin: 0; grid-template-columns: 1fr; border: 0; } .product-context { min-height: 320px; padding: 28px 24px; } .context-copy h1 { font-size: 46px; } .context-copy > p:last-child { font-size: 13px; } .product-context::after { display: none; } .login-card { padding: 34px 24px 100px; border-top: 1px solid rgba(208,255,111,.18); border-left: 0; } .foot { display: none; } }
 </style>

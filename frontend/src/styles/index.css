@@ -1,26 +1,30 @@
-/* 智慧路灯 · Figma Nexcent-inspired clean operations theme */
+/* 夜航图谱 · map-first urban lighting operations system */
 
 :root {
-  --bg-root: #f5f7fa;
-  --bg-sidebar: #263238;
+  --ink: #06221d;
+  --ink-soft: #12352e;
+  --signal: #d0ff6f;
+  --signal-strong: #a8df37;
+  --bg-root: #f3f7f3;
+  --bg-sidebar: #06221d;
   --bg-surface: #ffffff;
-  --bg-surface-2: #f5f7fa;
+  --bg-surface-2: #edf3ee;
   --bg-elevated: #ffffff;
-  --bg-hover: #e8f5e9;
+  --bg-hover: #e3eedf;
 
-  --border-subtle: rgba(171, 190, 209, 0.28);
-  --border: rgba(137, 147, 158, 0.34);
-  --border-strong: rgba(77, 77, 77, 0.34);
+  --border-subtle: rgba(29, 70, 59, 0.13);
+  --border: rgba(29, 70, 59, 0.22);
+  --border-strong: rgba(8, 47, 39, 0.38);
 
-  --text-primary: #4d4d4d;
-  --text-secondary: #717171;
-  --text-muted: #89939e;
+  --text-primary: #102f28;
+  --text-secondary: #38564d;
+  --text-muted: #536b63;
 
-  --accent: #4caf4f;
-  --accent-bright: #388e3b;
-  --accent-deep: #237d31;
-  --accent-glow: rgba(76, 175, 79, 0.22);
-  --accent-dim: #e8f5e9;
+  --accent: #6ebd55;
+  --accent-bright: #2f7f61;
+  --accent-deep: #165b47;
+  --accent-glow: rgba(111, 190, 85, 0.22);
+  --accent-dim: #e6f3df;
 
   --ok: #2e7d31;
   --ok-glow: rgba(46, 125, 49, 0.18);
@@ -39,15 +43,15 @@
   --font-data: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code",
     "Consolas", "Menlo", monospace;
 
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-sm: 2px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
   --header-height: 68px;
   --sidebar-width: 232px;
-  --shadow-soft: 0 2px 10px rgba(171, 190, 209, 0.18);
-  --shadow-lift: 0 20px 48px -24px rgba(38, 50, 56, 0.34);
+  --shadow-soft: 0 12px 32px -28px rgba(6, 34, 29, 0.38);
+  --shadow-lift: 0 24px 58px -30px rgba(6, 34, 29, 0.42);
 
-  --el-color-primary: #4caf4f;
+  --el-color-primary: #287b5d;
   --el-color-primary-light-3: #66bb69;
   --el-color-primary-light-5: #81c784;
   --el-color-primary-light-7: #c8e6c9;
@@ -57,6 +61,10 @@
   --el-color-success: #2e7d31;
   --el-color-warning: #9a7100;
   --el-color-danger: #e53835;
+  --el-text-color-primary: #102f28;
+  --el-text-color-regular: #38564d;
+  --el-text-color-secondary: #536b63;
+  --el-text-color-placeholder: #536b63;
   --el-border-radius-base: 8px;
   --el-font-family: var(--font-ui);
 }
@@ -86,7 +94,11 @@ body {
   font-family: var(--font-ui);
   font-size: 14px;
   line-height: 1.55;
-  background: var(--bg-root);
+  background-color: var(--bg-root);
+  background-image:
+    linear-gradient(rgba(28, 74, 61, .035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(28, 74, 61, .035) 1px, transparent 1px);
+  background-size: 32px 32px;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -191,13 +203,13 @@ a:hover {
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 18px;
 }
 
 .page-intro {
   min-height: 48px;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   gap: 20px;
 }
@@ -205,8 +217,8 @@ a:hover {
 .page-title {
   margin: 0;
   color: var(--text-primary);
-  font-size: 30px;
-  font-weight: 650;
+  font-size: clamp(27px, 3vw, 42px);
+  font-weight: 720;
   line-height: 1.25;
   letter-spacing: -0.025em;
 }
@@ -214,7 +226,7 @@ a:hover {
 .page-desc {
   margin: 4px 0 0;
   color: var(--text-muted);
-  font-size: 12.5px;
+  font-size: 13px;
 }
 
 .refresh,
@@ -232,9 +244,9 @@ a:hover {
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
+  border-radius: 0;
   background: var(--bg-surface);
-  box-shadow: var(--shadow-soft);
+  box-shadow: none;
 }
 
 .panel-head {
@@ -245,7 +257,7 @@ a:hover {
   justify-content: space-between;
   gap: 14px;
   border-bottom: 1px solid var(--border-subtle);
-  background: #ffffff;
+  background: transparent;
 }
 
 .panel-title {
@@ -666,6 +678,55 @@ html.brand-theme .el-popper .el-popper__arrow::before {
   .el-textarea__inner {
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Shared Night Atlas component language */
+.el-button,
+.el-input__wrapper,
+.el-textarea__inner,
+.el-select__wrapper,
+.el-dialog,
+.el-message-box,
+.el-radio-button__inner,
+.el-switch__core {
+  border-radius: 0 !important;
+}
+
+.el-button--primary {
+  --el-button-bg-color: var(--ink);
+  --el-button-border-color: var(--ink);
+  --el-button-hover-bg-color: var(--accent-bright);
+  --el-button-hover-border-color: var(--accent-bright);
+  --el-button-active-bg-color: var(--accent-deep);
+}
+
+.el-dialog {
+  border-top: 4px solid var(--signal-strong);
+  box-shadow: var(--shadow-lift) !important;
+}
+
+.el-table {
+  --el-table-header-bg-color: #edf3ee;
+  --el-table-row-hover-bg-color: #eef8e9;
+  --el-table-border-color: var(--border-subtle);
+  --el-table-header-text-color: var(--text-secondary);
+  --el-table-text-color: var(--text-primary);
+  font-size: 12px;
+}
+
+.el-table th.el-table__cell {
+  height: 46px;
+  font: 10px var(--font-data);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.el-table td.el-table__cell { height: 52px; }
+
+@media (max-width: 820px) {
+  .workspace-page { gap: 14px; }
+  .page-intro { min-height: auto; }
+  .panel { box-shadow: none; }
 }
 
 @media (forced-colors: active) {

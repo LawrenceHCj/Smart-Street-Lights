@@ -179,9 +179,10 @@ let resizeObserver: ResizeObserver | null = null
 const loading = ref(false)
 let historyRequestId = 0
 
-type RangeKey = '24h' | '7d'
-const range = ref<RangeKey>('24h')
+type RangeKey = '1h' | '24h' | '7d'
+const range = ref<RangeKey>('1h')
 const ranges: Array<{ value: RangeKey; label: string }> = [
+  { value: '1h', label: '近 1 小时' },
   { value: '24h', label: '24 小时' },
   { value: '7d', label: '近 7 天' },
 ]
@@ -232,13 +233,14 @@ async function loadHistory() {
   const requestId = ++historyRequestId
   const now = Date.now()
   const h = 3600_000
-  const start = now - (range.value === '24h' ? 24 * h : 7 * 24 * h)
+  const rangeHours: Record<RangeKey, number> = { '1h': 1, '24h': 24, '7d': 7 * 24 }
+  const start = now - rangeHours[range.value] * h
   chartLoading.value = true
   try {
     const hist = await getHistory(code, start, now, { silent: true })
     if (requestId !== historyRequestId || code !== currentCode.value) return
     chartError.value = ''
-    renderChart(hist.points)
+    renderChart(hist.points, { start, end: now })
   } catch {
     if (requestId !== historyRequestId) return
     chartError.value = '趋势数据加载失败'
@@ -275,11 +277,11 @@ function onSelect(row: DeviceVO | undefined) {
   }
 }
 
-function renderChart(points: LightPoint[]) {
+function renderChart(points: LightPoint[], timeWindow?: { start: number; end: number }) {
   if (!chartRef.value) return
   if (!chart) chart = initLuxChart(chartRef.value)
   hasChartData.value = points.length > 0
-  chart.setOption(luxLineOption(points.map((p) => p.ts), points.map((p) => p.lux)), true)
+  chart.setOption(luxLineOption(points.map((p) => p.ts), points.map((p) => p.lux), timeWindow), true)
 }
 
 function timeAgo(ts: number | null) {
@@ -585,4 +587,17 @@ onUnmounted(() => {
     flex: 1;
   }
 }
+/* Atlas scan workspace */
+.monitor { max-width: 1640px; display: grid; grid-template-columns: minmax(320px, .42fr) minmax(0, 1fr); align-items: start; gap: 0; }
+.monitor > .page-intro, .monitor > .async-banner { grid-column: 1 / -1; margin-bottom: 18px; }
+.monitor > .panel { border-radius: 0; }
+.monitor > .panel:nth-of-type(1) { border-right: 0; }
+.monitor > .panel:nth-of-type(2) { min-height: 100%; }
+.monitor .panel-head { min-height: 68px; }
+.desktop-device-table { max-height: 580px; overflow: auto; }
+.monitor .chart { height: 520px; }
+.monitor .range-switch, .monitor .range-switch button { border-radius: 0; }
+.monitor .range-switch button.active { color: var(--ink); background: var(--signal); }
+@media (max-width: 980px) { .monitor { display: flex; } .monitor > .panel:nth-of-type(1) { border-right: 1px solid var(--border-subtle); } .monitor .chart { height: 340px; } }
+@media (max-width: 700px) { .monitor { color: #e8f5ef; } .monitor .page-title { color: #f5fff8; } .monitor .page-desc { color: #8fa89f; } .monitor > .panel { border-color: rgba(208,255,111,.16); background: var(--ink); } .monitor .panel-head { border-color: rgba(255,255,255,.1); background: var(--ink-soft); } .monitor .panel-title, .monitor .device-code { color: #f5fff8; } }
 </style>
