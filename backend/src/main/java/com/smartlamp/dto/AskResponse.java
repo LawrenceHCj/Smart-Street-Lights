@@ -9,8 +9,17 @@ public class AskResponse {
     private String answer;
     private List<SourceItem> sources;
 
+    // 会话标识（Agent V3）：新建会话时返回，前端后续请求回传实现多轮记忆
+    private String conversationId;
+
     public AskResponse(String answer, List<SourceItem> sources) {
         this.answer = answer;
         this.sources = sources;
+    }
+
+    public AskResponse(String answer, List<SourceItem> sources, String conversationId) {
+        this.answer = answer;
+        this.sources = sources;
+        this.conversationId = conversationId;
     }
 }

@@ -33,12 +33,17 @@ public class ToolCatalog {
     @Autowired
     private Retriever retriever;
 
+    @Autowired
+    private AgentActionTools agentActionTools;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // 工具定义：name 工具名、displayTitle 展示名、source 来源标注、description 用途与适用时机、
-    // parameters 输入 schema、executor 执行器（入参为大模型给的 arguments，出参为带 source 标注的结果）
+    // parameters 输入 schema、executor 执行器（入参为大模型给的 arguments，出参为带 source 标注的结果）、
+    // riskLevel 风险等级（READ/LOW_WRITE/HIGH_WRITE）、requiresConfirmation 是否需要用户确认
     public record ToolSpec(String name, String displayTitle, String source, String description,
-                           ObjectNode parameters, Function<JsonNode, ObjectNode> executor) {
+                           ObjectNode parameters, Function<JsonNode, ObjectNode> executor,
+                           String riskLevel, boolean requiresConfirmation) {
     }
 
     private volatile List<ToolSpec> specs;
@@ -59,11 +64,11 @@ public class ToolCatalog {
                 new ToolSpec("search_knowledge", "内部知识库", "knowledge",
                         "搜索项目内部知识库（来源标注 knowledge），返回路灯维护、告警处理、光照联动控制等维修知识条目及相关度。当问题涉及通用维护知识、排查步骤、处理建议时使用。",
                         parameters(properties().set("query", prop("string", "检索关键词或用户问题")), "query"),
-                        this::searchKnowledge),
+                        this::searchKnowledge, "READ", false),
                 new ToolSpec("get_device_list", "设备列表（系统实时数据）", "system_data",
                         "查询系统实时数据：全部路灯设备列表（编号、位置、在线状态、最新光照、最近心跳时间）。当用户问系统里有哪些设备或整体运行状态时使用。无输入参数。",
                         parameters(properties()),
-                        args -> systemDataNode("devices", objectMapper.valueToTree(agentTools.getDeviceList()))),
+                        args -> systemDataNode("devices", objectMapper.valueToTree(agentTools.getDeviceList())), "READ", false),
                 new ToolSpec("get_device_status", "设备状态（系统实时数据）", "system_data",
                         "查询系统实时数据：单台设备的当前状态。当用户问某台具体设备是否在线、当前状态如何时使用。",
                         parameters(properties().set("deviceCode", prop("string", "设备编号，例如 lamp001")), "deviceCode"),
@@ -73,7 +78,7 @@ public class ToolCatalog {
                             ObjectNode node = systemDataNode();
                             node.set("device", device == null ? objectMapper.nullNode() : objectMapper.valueToTree(device));
                             return node;
-                        }),
+                        }, "READ", false),
                 new ToolSpec("get_latest_telemetry", "最新光照（系统实时数据）", "system_data",
                         "查询系统实时数据：单台设备的最新光照值。当用户问某台设备当前光照时使用。",
                         parameters(properties().set("deviceCode", prop("string", "设备编号")), "deviceCode"),
@@ -83,14 +88,14 @@ public class ToolCatalog {
                             ObjectNode node = systemDataNode();
                             node.set("light", light == null ? objectMapper.nullNode() : objectMapper.valueToTree(light));
                             return node;
-                        }),
+                        }, "READ", false),
                 new ToolSpec("get_telemetry_history", "光照历史（系统实时数据）", "system_data",
                         "查询系统实时数据：单台设备的光照历史曲线。当用户问光照趋势或历史变化时使用。start/end 为毫秒时间戳，缺省取最近24小时。",
                         parameters(properties()
                                 .set("deviceCode", prop("string", "设备编号"))
                                 .set("start", prop("number", "起始毫秒时间戳（可选）"))
                                 .set("end", prop("number", "结束毫秒时间戳（可选）")), "deviceCode"),
-                        this::telemetryHistory),
+                        this::telemetryHistory, "READ", false),
                 new ToolSpec("get_alert_history", "告警记录（系统实时数据）", "system_data",
                         "查询系统实时数据：告警记录，可按设备编号过滤。当用户问告警、设备异常、为什么离线时使用。",
                         parameters(properties().set("deviceCode", prop("string", "设备编号（可选，不传查全部）"))),
@@ -98,11 +103,20 @@ public class ToolCatalog {
                             String code = args.hasNonNull("deviceCode") ? args.path("deviceCode").asText() : null;
                             List<Alarm> alarms = code == null ? agentTools.getAlertHistory() : agentTools.getAlertHistory(code);
                             return systemDataNode("alarms", alarmsToArray(alarms));
-                        }),
+                        }, "READ", false),
                 new ToolSpec("get_linkage_config", "联动配置（系统实时数据）", "system_data",
                         "查询系统实时数据：当前光照联动配置（自动开关与阈值）。当用户问阈值设置或自动控制配置时使用。无输入参数。",
                         parameters(properties()),
-                        args -> systemDataNode("config", objectMapper.valueToTree(agentTools.getLinkageConfig()))));
+                        args -> systemDataNode("config", objectMapper.valueToTree(agentTools.getLinkageConfig())), "READ", false),
+                // ============ 控制意图工具（只生成待确认 Action，绝不执行控制） ============
+                new ToolSpec("turn_on_light", "开灯控制请求", "action",
+                        "提交单台路灯开灯请求（低风险写操作，需要用户确认）。工具会自动检查：设备是否存在、是否在线、当前开关状态；检查通过后生成待确认 Action，不会真正控制设备。仅支持单台设备，绝不用于批量操作。",
+                        parameters(properties().set("deviceCode", prop("string", "设备编号，例如 lamp001")), "deviceCode"),
+                        agentActionTools::requestTurnOn, "LOW_WRITE", true),
+                new ToolSpec("turn_off_light", "关灯控制请求", "action",
+                        "提交单台路灯关灯请求（低风险写操作，需要用户确认）。工具会自动检查：设备是否存在、是否在线、当前开关状态；检查通过后生成待确认 Action，不会真正控制设备。仅支持单台设备，绝不用于批量操作。",
+                        parameters(properties().set("deviceCode", prop("string", "设备编号，例如 lamp001")), "deviceCode"),
+                        agentActionTools::requestTurnOff, "LOW_WRITE", true));
     }
 
     // ============ 执行入口 ============
@@ -139,6 +153,11 @@ public class ToolCatalog {
     // 根据工具名取展示名（用于响应的 sources）
     public String displayTitle(String name) {
         return getSpecs().stream().filter(s -> s.name().equals(name)).map(ToolSpec::displayTitle).findFirst().orElse(name);
+    }
+
+    // 根据工具名取来源标注（knowledge / system_data / action）
+    public String sourceOf(String name) {
+        return getSpecs().stream().filter(s -> s.name().equals(name)).map(ToolSpec::source).findFirst().orElse("system_data");
     }
 
     // ============ 执行器 ============

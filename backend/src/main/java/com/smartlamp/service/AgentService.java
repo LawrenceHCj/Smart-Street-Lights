@@ -4,6 +4,7 @@ import com.smartlamp.agent.LlmClient;
 import com.smartlamp.agent.LlmException;
 import com.smartlamp.agent.PromptProvider;
 import com.smartlamp.agent.Retriever;
+import com.smartlamp.agent.conversation.AgentMessage;
 import com.smartlamp.agent.tools.ToolCatalog;
 import com.smartlamp.dto.AskResponse;
 import com.smartlamp.dto.SourceItem;
@@ -16,6 +17,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -49,6 +51,16 @@ public class AgentService {
     }
 
     public AskResponse ask(String question) {
+        return ask(question, List.of(), null);
+    }
+
+    // 多轮版：注入最近历史消息（仅语言上下文，system prompt 在最前，当前问题在最后）
+    public AskResponse ask(String question, List<AgentMessage> historyMessages) {
+        return ask(question, historyMessages, null);
+    }
+
+    // 长对话版：Summary + 最近历史消息 + 当前问题（Summary 仅作背景参考，不代表设备当前状态）
+    public AskResponse ask(String question, List<AgentMessage> historyMessages, String summary) {
         // 1. 空问题校验（由 GlobalExceptionHandler 统一返回 code=400）
         if (question == null || question.isBlank()) {
             throw new BadRequestException("question 不能为空");
@@ -65,6 +77,15 @@ public class AgentService {
         try {
             List<ObjectNode> messages = new ArrayList<>();
             messages.add(message("system", promptProvider.get()));
+            // 注入对话摘要（若有）：较早历史的压缩背景，实时事实仍必须重新查询
+            if (summary != null && !summary.isBlank()) {
+                messages.add(message("system", "【对话摘要·仅作背景参考，不代表设备当前状态】\n" + summary));
+            }
+            // 注入最近历史消息：只用于理解语言上下文（指代消解），不代表设备当前状态
+            for (AgentMessage m : historyMessages) {
+                String role = "user".equals(m.getRole()) ? "user" : "assistant";
+                messages.add(message(role, "[历史消息 " + formatTime(m.getCreatedAt()) + "] " + m.getContent()));
+            }
             messages.add(message("user", "【用户问题】\n" + text));
             ArrayNode tools = toolCatalog.toOpenAiTools();
             List<ExecutedTool> executed = new ArrayList<>();
@@ -95,6 +116,13 @@ public class AgentService {
             log.warn("智能体流程失败，降级为本地知识库回答: {}", e.getMessage());
             return localResponse(retriever.retrieve(text, TOP_K));
         }
+    }
+
+    // 历史消息时间展示（仅用于标注"这是过去的消息"）
+    private static final DateTimeFormatter HISTORY_TIME_FORMAT = DateTimeFormatter.ofPattern("MM-dd HH:mm");
+
+    private String formatTime(java.time.LocalDateTime time) {
+        return time == null ? "" : time.format(HISTORY_TIME_FORMAT);
     }
 
     // 构造一条对话消息
@@ -139,6 +167,9 @@ public class AgentService {
                             "knowledge",
                             match.path("score").asDouble()));
                 }
+            } else if ("action".equals(toolCatalog.sourceOf(tool.name()))) {
+                // 控制请求工具：标注为 action 来源（待确认操作请求）
+                sources.add(new SourceItem(toolCatalog.displayTitle(tool.name()), "action", 1.0));
             } else {
                 sources.add(new SourceItem(toolCatalog.displayTitle(tool.name()), "system_data", 1.0));
             }
