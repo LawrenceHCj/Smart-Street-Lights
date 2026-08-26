@@ -99,6 +99,15 @@ class PromptProviderTest {
         assertThat(prompt).contains("不得把旧消息当作当前事实");
     }
 
+    // ============ 回答格式：纯文本，禁止 Markdown 标记 ============
+
+    @Test
+    void 回答格式要求纯文本禁止Markdown与列表符() {
+        assertThat(prompt).contains("不要使用任何 Markdown");
+        assertThat(prompt).contains("数字编号");
+        assertThat(prompt).contains("不必硬套上述结构");
+    }
+
     @Test
     void 批量操作拒绝与模糊命令追问规则() {
         assertThat(prompt).contains("批量操作");
