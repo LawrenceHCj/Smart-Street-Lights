@@ -7,7 +7,9 @@ import java.time.LocalDateTime;
 
 @Data
 @Entity
-@Table(name = "light_point")
+@Table(name = "light_point", indexes = {
+        @Index(name = "idx_device_ts", columnList = "device_code,ts", unique = true)
+})
 public class LightPoint {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

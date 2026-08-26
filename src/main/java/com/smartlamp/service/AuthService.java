@@ -30,7 +30,7 @@ public class AuthService {
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             return null;
         }
-        String token = jwtUtil.generateToken(user.getUsername(), user.getRole());
-        return new LoginResponse(token, user.getUsername(), user.getRole());
+        String token = jwtUtil.generateToken(user.getUsername(), user.getRole().name());
+        return new LoginResponse(token, user.getUsername(), user.getRole().name());
     }
 }

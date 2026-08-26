@@ -13,7 +13,7 @@ import org.springframework.messaging.Message;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
-
+import com.smartlamp.entity.enums.DeviceStatus;
 @Component
 public class MqttMessageListener {
 
@@ -49,12 +49,12 @@ public class MqttMessageListener {
                     device = new Device();
                     device.setCode(deviceId);
                     device.setLocation("未知位置");
-                    device.setStatus("ONLINE");
+                    device.setStatus(DeviceStatus.ONLINE);
                     device.setCreatedAt(LocalDateTime.now());
                 }
                 device.setLatestLux(lux);
                 device.setLastSeen(ts);
-                device.setStatus("ONLINE");
+                device.setStatus(DeviceStatus.ONLINE);
                 deviceRepository.save(device);
 
                 // 保存光照历史
@@ -75,11 +75,11 @@ public class MqttMessageListener {
                     device = new Device();
                     device.setCode(deviceId);
                     device.setLocation("未知位置");
-                    device.setStatus("ONLINE");
+                    device.setStatus(DeviceStatus.ONLINE);
                     device.setCreatedAt(LocalDateTime.now());
                 }
                 device.setLastSeen(ts);
-                device.setStatus("ONLINE");
+                device.setStatus(DeviceStatus.ONLINE);
                 deviceRepository.save(device);
             }
         } catch (Exception e) {

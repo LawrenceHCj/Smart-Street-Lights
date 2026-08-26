@@ -2,6 +2,8 @@ package com.smartlamp.service;
 
 import com.smartlamp.dto.UserDTO;
 import com.smartlamp.entity.SysUser;
+import com.smartlamp.entity.enums.UserRole;
+import com.smartlamp.entity.enums.UserStatus;
 import com.smartlamp.repository.SysUserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -27,8 +29,8 @@ public class UserService {
                 .map(user -> new UserDTO(
                         user.getId(),
                         user.getUsername(),
-                        user.getRole(),
-                        user.getStatus(),
+                        user.getRole().name(),          // 枚举转字符串
+                        user.getStatus().name(),         // 枚举转字符串
                         user.getCreatedAt() == null ? null :
                                 user.getCreatedAt().toInstant(ZoneOffset.UTC).toEpochMilli()
                 ))
@@ -43,8 +45,8 @@ public class UserService {
         SysUser user = new SysUser();
         user.setUsername(username);
         user.setPassword(passwordEncoder.encode(password));
-        user.setRole(role);
-        user.setStatus("ENABLED");
+        user.setRole(UserRole.valueOf(role.toUpperCase()));   // 字符串转枚举
+        user.setStatus(UserStatus.ENABLED);
         user.setCreatedAt(LocalDateTime.now());
         sysUserRepository.save(user);
         return true;
@@ -57,10 +59,10 @@ public class UserService {
             return false;
         }
         // 保护 admin 用户不被修改
-        if ("admin".equals(user.getUsername()) || "admin".equals(user.getRole())) {
+        if (UserRole.ADMIN.equals(user.getRole())) {
             return false;
         }
-        user.setRole(newRole);
+        user.setRole(UserRole.valueOf(newRole.toUpperCase()));
         sysUserRepository.save(user);
         return true;
     }
@@ -72,7 +74,7 @@ public class UserService {
             return false;
         }
         // 保护 admin 用户不被删除
-        if ("admin".equals(user.getUsername()) || "admin".equals(user.getRole())) {
+        if (UserRole.ADMIN.equals(user.getRole())) {
             return false;
         }
         sysUserRepository.delete(user);

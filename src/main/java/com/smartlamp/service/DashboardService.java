@@ -1,5 +1,6 @@
 package com.smartlamp.service;
 
+import com.smartlamp.entity.enums.DeviceStatus;
 import com.smartlamp.dto.DashboardOverviewDTO;
 import com.smartlamp.dto.LightDataDTO;
 import com.smartlamp.dto.SummaryDTO;
@@ -27,8 +28,8 @@ public class DashboardService {
     public DashboardOverviewDTO getOverview() {
         List<Device> devices = deviceRepository.findAll();
         long total = devices.size();
-        long online = devices.stream().filter(d -> "ONLINE".equals(d.getStatus())).count();
-        long offline = devices.stream().filter(d -> "OFFLINE".equals(d.getStatus())).count();
+        long online = devices.stream().filter(d -> DeviceStatus.ONLINE.equals(d.getStatus())).count();
+        long offline = devices.stream().filter(d -> DeviceStatus.OFFLINE.equals(d.getStatus())).count();
         double avgLux = devices.stream()
                 .filter(d -> d.getLatestLux() != null)
                 .mapToDouble(Device::getLatestLux)

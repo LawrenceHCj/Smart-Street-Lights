@@ -1,6 +1,7 @@
 package com.smartlamp.task;
 
 import com.smartlamp.entity.Device;
+import com.smartlamp.entity.enums.DeviceStatus;
 import com.smartlamp.repository.DeviceRepository;
 import com.smartlamp.service.AlarmService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,9 +28,9 @@ public class DeviceOfflineTask {
 
         for (Device device : devices) {
             // 只处理当前状态为 ONLINE 且 lastSeen 不为空的设备
-            if ("ONLINE".equals(device.getStatus()) && device.getLastSeen() != null) {
+            if (DeviceStatus.ONLINE.equals(device.getStatus()) && device.getLastSeen() != null) {
                 if (now - device.getLastSeen() > threshold) {
-                    device.setStatus("OFFLINE");
+                    device.setStatus(DeviceStatus.OFFLINE);
                     deviceRepository.save(device);
                     System.out.println("设备 " + device.getCode() + " 已自动标记为 OFFLINE");
 

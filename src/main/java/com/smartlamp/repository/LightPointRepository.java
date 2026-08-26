@@ -13,4 +13,6 @@ public interface LightPointRepository extends JpaRepository<LightPoint, Long> {
     List<LightPoint> findByDeviceCodeOrderByTsDesc(String deviceCode, Pageable pageable);
 
     List<LightPoint> findAllByOrderByTsDesc(Pageable pageable);   // 新增
+
+    void deleteByDeviceCode(String deviceCode);
 }

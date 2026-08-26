@@ -1,5 +1,7 @@
 package com.smartlamp.entity;
 
+import com.smartlamp.entity.enums.UserRole;
+import com.smartlamp.entity.enums.UserStatus;
 import lombok.Data;
 
 import jakarta.persistence.*;
@@ -19,11 +21,13 @@ public class SysUser {
     @Column(nullable = false)
     private String password;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String role;
+    private UserRole role;
 
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private String status;   // ENABLED / DISABLED
+    private UserStatus status = UserStatus.ENABLED;
 
     private LocalDateTime createdAt;
 }
