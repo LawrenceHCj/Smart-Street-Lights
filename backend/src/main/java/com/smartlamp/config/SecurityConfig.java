@@ -27,6 +27,7 @@ public class SecurityConfig {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/auth/login", "/events").permitAll()
+                        .requestMatchers("/api/users/**").hasRole("admin")
                         .anyRequest().authenticated()
                 )
                 // ========== 统一安全错误响应 ==========

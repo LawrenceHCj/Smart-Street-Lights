@@ -51,13 +51,18 @@ public class UserService {
     }
 
     // 修改用户角色
-    public boolean updateUserRole(Long id, String newRole) {
+    public boolean updateUserRole(Long id, String newRole, String actorUsername, boolean actorIsAdmin) {
+        if (!actorIsAdmin || actorUsername == null || actorUsername.isBlank()) {
+            return false;
+        }
         SysUser user = sysUserRepository.findById(id).orElse(null);
         if (user == null) {
             return false;
         }
-        // 保护 admin 用户不被修改
-        if ("admin".equals(user.getUsername()) || "admin".equals(user.getRole())) {
+        // 管理员也不能修改自己的角色，避免当前会话权限与数据库角色不一致。
+        if (actorUsername.equals(user.getUsername())
+                || "admin".equals(user.getUsername())
+                || "admin".equals(user.getRole())) {
             return false;
         }
         user.setRole(newRole);
