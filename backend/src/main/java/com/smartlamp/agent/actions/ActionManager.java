@@ -7,6 +7,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 
 // Action 管理器：Action 的创建、查询、确认/取消与状态流转，全部 Action 实例保存在内存。
 // 安全约定：
@@ -23,10 +24,24 @@ public class ActionManager {
     private static final Set<String> FORBIDDEN_ARGUMENT_KEYS =
             Set.of("command", "cmd", "sql", "shell", "script", "payload", "topic", "mqtt");
 
-    // 本阶段开放的目标类型（后续开放配置类目标时再扩展）
-    private static final Set<String> ALLOWED_TARGET_TYPES = Set.of("device");
+    // 开放的目标类型（阶段20 起增加 config：系统配置类目标）
+    private static final Set<String> ALLOWED_TARGET_TYPES = Set.of("device", "config");
 
     private final Map<String, AgentAction> store = new ConcurrentHashMap<>();
+
+    // 审计钩子（阶段19）：每次状态流转后回调，由 AgentActionAuditService 注册；未注册时无操作（纯内存单测不受影响）
+    private volatile Consumer<AgentAction> auditHook;
+
+    public void setAuditHook(Consumer<AgentAction> auditHook) {
+        this.auditHook = auditHook;
+    }
+
+    private void notifyAudit(AgentAction action) {
+        Consumer<AgentAction> hook = auditHook;
+        if (hook != null) {
+            hook.accept(action);
+        }
+    }
 
     public synchronized AgentAction create(ActionType type, String targetType, String targetId,
                                            Map<String, Object> arguments, String requestedBy) {
@@ -77,6 +92,7 @@ public class ActionManager {
         }
         action.setStatus(ActionStatus.CONFIRMED);
         action.setMessage("已由用户确认");
+        notifyAudit(action);
     }
 
     // 用户取消：PENDING_CONFIRMATION → CANCELLED
@@ -88,6 +104,7 @@ public class ActionManager {
         }
         action.setStatus(ActionStatus.CANCELLED);
         action.setMessage("已由用户取消");
+        notifyAudit(action);
     }
 
     // 懒过期检查：未终态且超过 expiresAt 的 Action 置为 EXPIRED 并抛异常拦截
@@ -96,6 +113,7 @@ public class ActionManager {
                 && System.currentTimeMillis() > action.getExpiresAt()) {
             action.setStatus(ActionStatus.EXPIRED);
             action.setMessage("已过期（有效期至 " + action.getExpiresAt() + "）");
+            notifyAudit(action);
             throw new ActionRejectedException("Action 已过期: " + action.getActionId());
         }
     }
@@ -104,6 +122,23 @@ public class ActionManager {
     public void revalidate(AgentAction action) {
         validateTarget(action.getTargetType(), action.getTargetId());
         validateArguments(action.getActionType(), action.getArguments());
+    }
+
+    // 取消指定会话的全部待确认 Action（阶段30：会话删除时的安全处理）。
+    // 只取消 PENDING_CONFIRMATION，已确认/终态不受影响；conversationId 仅用于溯源关联，
+    // 绝不能替代 actionId 的精确确认。
+    public synchronized int cancelPendingByConversation(String conversationId) {
+        int count = 0;
+        for (AgentAction action : store.values()) {
+            if (conversationId != null && conversationId.equals(action.getConversationId())
+                    && action.getStatus() == ActionStatus.PENDING_CONFIRMATION) {
+                action.setStatus(ActionStatus.CANCELLED);
+                action.setMessage("所属会话已删除，操作已取消（conversationId=" + conversationId + "）");
+                notifyAudit(action);
+                count++;
+            }
+        }
+        return count;
     }
 
     // ============ 以下状态流转仅供 ActionGateway 使用（包内可见） ============
@@ -115,24 +150,28 @@ public class ActionManager {
         }
         action.setStatus(ActionStatus.EXECUTING);
         action.setMessage("执行中");
+        notifyAudit(action);
     }
 
     synchronized void markSuccess(String actionId, String message) {
         AgentAction action = require(actionId);
         action.setStatus(ActionStatus.SUCCESS);
         action.setMessage(message);
+        notifyAudit(action);
     }
 
     synchronized void markAccepted(String actionId, String message) {
         AgentAction action = require(actionId);
         action.setStatus(ActionStatus.COMMAND_ACCEPTED);
         action.setMessage(message);
+        notifyAudit(action);
     }
 
     synchronized void markFailure(String actionId, String message) {
         AgentAction action = require(actionId);
         action.setStatus(ActionStatus.FAILED);
         action.setMessage("执行失败: " + message);
+        notifyAudit(action);
     }
 
     // ============ 参数校验 ============
@@ -163,8 +202,9 @@ public class ActionManager {
         // 已登记类型的参数类型/范围校验（当前阶段未开放的类型同样受约束，开放时直接生效）
         if (type == ActionType.UPDATE_LUX_THRESHOLD && args.containsKey("value")) {
             Object value = args.get("value");
-            if (!(value instanceof Number) || ((Number) value).doubleValue() < 0 || ((Number) value).doubleValue() > 500) {
-                throw new ActionRejectedException("阈值参数 value 必须是 0-500 之间的数值");
+            // 合法范围以后端业务规则为准（与 PUT /api/config 的 luxThreshold 10-500 规则一致）
+            if (!(value instanceof Number) || ((Number) value).doubleValue() < 10 || ((Number) value).doubleValue() > 500) {
+                throw new ActionRejectedException("阈值参数 value 必须是 10-500 之间的数值（以后端配置规则为准）");
             }
         }
         if (type == ActionType.UPDATE_AUTO_MODE && args.containsKey("enabled")) {

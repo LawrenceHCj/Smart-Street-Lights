@@ -1,6 +1,8 @@
 package com.smartlamp.agent.actions;
 
+import com.smartlamp.dto.LinkageConfigDTO;
 import com.smartlamp.entity.Device;
+import com.smartlamp.service.ConfigService;
 import com.smartlamp.service.DeviceService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -14,6 +16,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 // 阶段17：用户确认/取消业务单测——确认时二次校验 + 完整状态机验证
@@ -24,20 +29,25 @@ class ActionServiceTest {
     @Mock
     private DeviceService deviceService;
 
+    @Mock
+    private ConfigService configService;
+
     private ActionManager actionManager;
+    private ActionGateway actionGateway;
     private ActionService actionService;
     private AtomicInteger executorCalls;
 
     @BeforeEach
     void setUp() {
         actionManager = new ActionManager();
-        ActionGateway actionGateway = new ActionGateway();
+        actionGateway = new ActionGateway();
         ReflectionTestUtils.setField(actionGateway, "actionManager", actionManager);
 
         actionService = new ActionService();
         ReflectionTestUtils.setField(actionService, "actionManager", actionManager);
         ReflectionTestUtils.setField(actionService, "actionGateway", actionGateway);
         ReflectionTestUtils.setField(actionService, "deviceService", deviceService);
+        ReflectionTestUtils.setField(actionService, "configService", configService);
 
         // 注册测试执行器（计数观察是否被调用；返回 null = 不报告结果，按默认成功处理）
         executorCalls = new AtomicInteger();
@@ -210,6 +220,64 @@ class ActionServiceTest {
                 .hasMessageContaining("状态已变化");
         assertThat(actionManager.find(action.getActionId()).orElseThrow().getStatus())
                 .isEqualTo(ActionStatus.FAILED);
+        assertThat(executorCalls).hasValue(0);
+    }
+
+    // ============ 配置类目标（阶段20） ============
+
+    private LinkageConfigDTO linkage(boolean enabled, int threshold, int hysteresis) {
+        LinkageConfigDTO dto = new LinkageConfigDTO();
+        dto.setEnabled(enabled);
+        dto.setThreshold(threshold);
+        dto.setHysteresis(hysteresis);
+        return dto;
+    }
+
+    private AgentAction createConfigAction(ActionType type, Map<String, Object> args) {
+        return actionManager.create(type, "config", "system", args, "test-user");
+    }
+
+    @Test
+    void 配置类确认成功跳过设备检查并执行() {
+        actionGateway.registerExecutor(ActionType.UPDATE_LUX_THRESHOLD, action -> {
+            executorCalls.incrementAndGet();
+            return null;
+        });
+        when(configService.getLinkageConfig()).thenReturn(linkage(true, 30, 10));
+        AgentAction action = createConfigAction(ActionType.UPDATE_LUX_THRESHOLD, Map.of("value", 150));
+
+        AgentAction result = actionService.confirmAndExecute(action.getActionId());
+
+        assertThat(result.getStatus()).isEqualTo(ActionStatus.SUCCESS);
+        assertThat(executorCalls).hasValue(1);
+        // 配置类目标不检查设备
+        verify(deviceService, never()).getDeviceByCode(any());
+    }
+
+    @Test
+    void 确认时配置已是目标值拒绝() {
+        actionGateway.registerExecutor(ActionType.UPDATE_LUX_THRESHOLD, action -> {
+            executorCalls.incrementAndGet();
+            return null;
+        });
+        when(configService.getLinkageConfig()).thenReturn(linkage(true, 150, 10));
+        AgentAction action = createConfigAction(ActionType.UPDATE_LUX_THRESHOLD, Map.of("value", 150));
+
+        assertThatThrownBy(() -> actionService.confirmAndExecute(action.getActionId()))
+                .isInstanceOf(ActionRejectedException.class)
+                .hasMessageContaining("已变化");
+        assertThat(actionManager.find(action.getActionId()).orElseThrow().getStatus())
+                .isEqualTo(ActionStatus.FAILED);
+        assertThat(executorCalls).hasValue(0);
+    }
+
+    @Test
+    void 配置类取消确认() {
+        AgentAction action = createConfigAction(ActionType.UPDATE_AUTO_MODE, Map.of("enabled", false));
+
+        AgentAction result = actionService.cancel(action.getActionId());
+
+        assertThat(result.getStatus()).isEqualTo(ActionStatus.CANCELLED);
         assertThat(executorCalls).hasValue(0);
     }
 }

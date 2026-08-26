@@ -15,10 +15,9 @@ public enum ActionType {
     // ============ 低风险写（必须用户确认） ============
     TURN_ON_LIGHT("单台路灯开灯", ActionRisk.LOW_WRITE, true, Set.of()),
     TURN_OFF_LIGHT("单台路灯关灯", ActionRisk.LOW_WRITE, true, Set.of()),
-
-    // ============ 低风险写（已登记，以后阶段开放） ============
-    UPDATE_LUX_THRESHOLD("修改光照阈值", ActionRisk.LOW_WRITE, false, Set.of("value")),
-    UPDATE_AUTO_MODE("修改自动模式", ActionRisk.LOW_WRITE, false, Set.of("enabled")),
+    // 配置类（阶段20 开放）：只开放光照阈值与自动模式，其余配置仍不开放
+    UPDATE_LUX_THRESHOLD("修改光照阈值", ActionRisk.LOW_WRITE, true, Set.of("value")),
+    UPDATE_AUTO_MODE("修改自动模式", ActionRisk.LOW_WRITE, true, Set.of("enabled")),
 
     // ============ 高风险写（Agent 禁止执行） ============
     TURN_OFF_ALL("关闭全部设备", ActionRisk.HIGH_WRITE, false, Set.of()),

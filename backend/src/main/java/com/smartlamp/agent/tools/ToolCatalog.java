@@ -116,7 +116,15 @@ public class ToolCatalog {
                 new ToolSpec("turn_off_light", "关灯控制请求", "action",
                         "提交单台路灯关灯请求（低风险写操作，需要用户确认）。工具会自动检查：设备是否存在、是否在线、当前开关状态；检查通过后生成待确认 Action，不会真正控制设备。仅支持单台设备，绝不用于批量操作。",
                         parameters(properties().set("deviceCode", prop("string", "设备编号，例如 lamp001")), "deviceCode"),
-                        agentActionTools::requestTurnOff, "LOW_WRITE", true));
+                        agentActionTools::requestTurnOff, "LOW_WRITE", true),
+                new ToolSpec("set_light_threshold", "光照阈值修改请求", "action",
+                        "提交光照阈值修改请求（低风险写操作，需要用户确认）。参数 value 必须是指定的明确数值（合法范围 10-500，由后端业务规则定义，你不得自行决定合法范围）。用户只说\"调高一点\"等模糊说法时，不得调用本工具猜测数值：必须先调用 get_linkage_config 查询当前配置，再向用户给出明确候选值，等用户确认具体数值后调用。",
+                        parameters(properties().set("value", prop("number", "目标开灯阈值（10-500 之间的明确数值）")), "value"),
+                        agentActionTools::requestSetThreshold, "LOW_WRITE", true),
+                new ToolSpec("set_auto_mode", "自动模式修改请求", "action",
+                        "提交自动控制开关修改请求（低风险写操作，需要用户确认）。参数 enabled=true 开启自动控制（设备按光照阈值自动开关灯），false 关闭自动控制。用户说\"天黑自动开灯\"等需求时，优先引导开启系统已有自动控制能力（本工具或系统配置界面），智能助手不得自己成为长期后台循环控制器。",
+                        parameters(properties().set("enabled", prop("boolean", "是否开启自动控制")), "enabled"),
+                        agentActionTools::requestSetAutoMode, "LOW_WRITE", true));
     }
 
     // ============ 执行入口 ============

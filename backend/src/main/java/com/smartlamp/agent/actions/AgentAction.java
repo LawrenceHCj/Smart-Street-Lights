@@ -22,5 +22,8 @@ public class AgentAction {
     private long requestedAt;            // 创建时间（epoch ms）
     private long expiresAt;              // 失效时间（epoch ms），过期后不可执行
     private String requestedBy;          // 发起者（用户名，由后端从认证上下文注入，不由 LLM 指定）
+    private String conversationId;       // 来源会话（阶段30，仅溯源关联；确认永远只认 actionId，绝不被替代）
+    private String originalState;        // 创建时的设备状态快照（如 lampStatus，供审计记录"操作前状态"）
+    private String targetState;          // 目标状态（如 ON / OFF，供审计记录"操作后预期状态"）
     private String message;              // 附加说明（拒绝原因 / 执行结果）
 }
