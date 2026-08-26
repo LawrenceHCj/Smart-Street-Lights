@@ -1,6 +1,7 @@
 package com.smartlamp.entity;
 
 import lombok.Data;
+
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 

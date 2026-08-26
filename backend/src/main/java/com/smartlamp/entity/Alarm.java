@@ -7,7 +7,10 @@ import java.time.LocalDateTime;
 
 @Data
 @Entity
-@Table(name = "alarm")
+@Table(name = "alarm", indexes = {
+        @Index(name = "idx_alarm_ts", columnList = "ts"),
+        @Index(name = "idx_alarm_status", columnList = "status")
+})
 public class Alarm {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

@@ -3,9 +3,12 @@ package com.smartlamp.service;
 import com.smartlamp.dto.DeviceDTO;
 import com.smartlamp.dto.LightDataDTO;
 import com.smartlamp.entity.Device;
+import com.smartlamp.repository.AlarmRepository;
 import com.smartlamp.repository.DeviceRepository;
+import com.smartlamp.repository.LightPointRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -16,6 +19,12 @@ public class DeviceService {
 
     @Autowired
     private DeviceRepository deviceRepository;
+
+    @Autowired
+    private LightPointRepository lightPointRepository;
+
+    @Autowired
+    private AlarmRepository alarmRepository;
 
     // 原有的获取所有设备实体（备用）
     public List<Device> getAllDevices() {
@@ -97,12 +106,15 @@ public class DeviceService {
         deviceRepository.save(device);
     }
 
-    // 解绑设备
+    // 删除设备及其关联遥测与告警，避免遗留孤儿数据
+    @Transactional
     public boolean removeDevice(String code) {
         Device device = deviceRepository.findByCode(code).orElse(null);
         if (device == null) {
             return false; // 设备不存在
         }
+        lightPointRepository.deleteByDeviceCode(code);
+        alarmRepository.deleteByDeviceId(code);
         deviceRepository.delete(device);
         return true;
     }
