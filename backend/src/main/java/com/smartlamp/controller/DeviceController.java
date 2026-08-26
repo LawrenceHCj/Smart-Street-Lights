@@ -12,6 +12,7 @@ import com.smartlamp.entity.Device;
 import com.smartlamp.service.DeviceService;
 import com.smartlamp.service.MqttPublisherService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -45,6 +46,7 @@ public class DeviceController {
 
     // POST /api/devices/{deviceId}/switch
     @PostMapping("/{deviceId}/switch")
+    @PreAuthorize("hasAnyRole('admin','operator')")
     public ApiResponse<Void> switchLight(@PathVariable String deviceId,
                                          @RequestBody SwitchLightRequest request) {
         if (deviceService.getDeviceByCode(deviceId) == null) {
@@ -59,6 +61,7 @@ public class DeviceController {
 
     // POST /api/devices 添加设备
     @PostMapping
+    @PreAuthorize("hasAnyRole('admin','operator')")
     public ApiResponse<DeviceDTO> addDevice(@RequestBody AddDeviceRequest request) {
         // 参数校验
         if (request.getCode() == null || request.getCode().isBlank()) {
@@ -78,6 +81,7 @@ public class DeviceController {
     }
 
     @PatchMapping("/{deviceId}")
+    @PreAuthorize("hasAnyRole('admin','operator')")
     public ApiResponse<DeviceDTO> updateDevice(@PathVariable String deviceId, @RequestBody UpdateDeviceRequest request) {
         if ((request.getLongitude() != null && (request.getLongitude() < -180 || request.getLongitude() > 180))
                 || (request.getLatitude() != null && (request.getLatitude() < -90 || request.getLatitude() > 90))) {
@@ -90,6 +94,7 @@ public class DeviceController {
     }
 
     @PostMapping("/{deviceId}/control")
+    @PreAuthorize("hasAnyRole('admin','operator')")
     public ApiResponse<ControlResultDTO> control(@PathVariable String deviceId, @RequestBody ControlRequest request) {
         Device device = deviceService.getDeviceByCode(deviceId);
         String action = request.getAction() == null ? "" : request.getAction().trim().toUpperCase();
@@ -105,6 +110,7 @@ public class DeviceController {
 
     // DELETE /api/devices/{deviceId} 解绑设备
     @DeleteMapping("/{deviceId}")
+    @PreAuthorize("hasAnyRole('admin','operator')")
     public ApiResponse<Void> removeDevice(@PathVariable String deviceId) {
         boolean success = deviceService.removeDevice(deviceId);
         if (!success) {
