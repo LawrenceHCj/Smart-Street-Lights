@@ -1,18 +1,13 @@
 package com.smartlamp.controller;
 
 import com.smartlamp.dto.*;
-import com.smartlamp.entity.Device;
 import com.smartlamp.entity.DeviceCommand;
-import com.smartlamp.entity.enums.CommandStatus;
-import com.smartlamp.repository.DeviceCommandRepository;
+import com.smartlamp.service.DeviceCommandService;
 import com.smartlamp.service.DeviceService;
-import com.smartlamp.service.MqttPublisherService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.LocalDateTime;
 import java.util.List;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/devices")
@@ -22,10 +17,7 @@ public class DeviceController {
     private DeviceService deviceService;
 
     @Autowired
-    private MqttPublisherService mqttPublisherService;
-
-    @Autowired
-    private DeviceCommandRepository deviceCommandRepository;
+    private DeviceCommandService deviceCommandService;
 
     // GET /api/devices
     @GetMapping
@@ -47,54 +39,38 @@ public class DeviceController {
     @PostMapping("/{deviceId}/switch")
     public ApiResponse<String> switchLight(@PathVariable String deviceId,
                                            @RequestBody SwitchLightRequest request) {
-        if (deviceService.getDeviceByCode(deviceId) == null) {
-            return ApiResponse.error(400, "设备不存在");
+        try {
+            String commandId = deviceCommandService.dispatchCommand(deviceId, request.isOn() ? "ON" : "OFF");
+            return ApiResponse.success(commandId);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.error(400, e.getMessage());
+        } catch (IllegalStateException e) {
+            return ApiResponse.error(400, e.getMessage());
         }
-        return dispatchCommand(deviceId, request.isOn() ? "ON" : "OFF");
     }
 
     // POST /api/devices/{deviceId}/control —— 兼容旧契约
     @PostMapping("/{deviceId}/control")
     public ApiResponse<String> control(@PathVariable String deviceId,
                                        @RequestBody DeviceControlRequest request) {
-        if (deviceService.getDeviceByCode(deviceId) == null) {
-            return ApiResponse.error(400, "设备不存在");
+        try {
+            String action = request.getAction();
+            if (action == null || !action.matches("ON|OFF")) {
+                return ApiResponse.error(400, "action 必须为 ON 或 OFF");
+            }
+            String commandId = deviceCommandService.dispatchCommand(deviceId, action);
+            return ApiResponse.success(commandId);
+        } catch (IllegalArgumentException e) {
+            return ApiResponse.error(400, e.getMessage());
+        } catch (IllegalStateException e) {
+            return ApiResponse.error(400, e.getMessage());
         }
-        String action = request.getAction();
-        if (action == null || !action.matches("ON|OFF")) {
-            return ApiResponse.error(400, "action 必须为 ON 或 OFF");
-        }
-        return dispatchCommand(deviceId, action);
     }
 
-    // 私有方法：生成指令并发布
-    private ApiResponse<String> dispatchCommand(String deviceId, String action) {
-        String commandId = UUID.randomUUID().toString();
-
-        // 1. 保存指令记录，状态为 DISPATCHED
-        DeviceCommand command = new DeviceCommand();
-        command.setCommandId(commandId);
-        command.setDeviceCode(deviceId);
-        command.setAction(action);
-        command.setStatus(CommandStatus.DISPATCHED);
-        command.setCreatedAt(LocalDateTime.now());
-        command.setUpdatedAt(LocalDateTime.now());
-        deviceCommandRepository.save(command);
-
-        // 2. 发布 MQTT 指令，携带 commandId
-        boolean on = "ON".equals(action);
-        String payload = "{\"deviceId\":\"" + deviceId + "\",\"on\":" + on + ",\"commandId\":\"" + commandId + "\"}";
-        String topic = "device/" + deviceId + "/cmd";
-        mqttPublisherService.publish(topic, payload);
-
-        // 3. 返回 commandId 给前端，前端可通过查询接口获取最终状态
-        return ApiResponse.success(commandId);
-    }
-
-    // GET /api/devices/commands/{commandId} 查询指令状态
+    // GET /api/devices/commands/{commandId}
     @GetMapping("/commands/{commandId}")
     public ApiResponse<DeviceCommand> getCommandStatus(@PathVariable String commandId) {
-        DeviceCommand command = deviceCommandRepository.findByCommandId(commandId).orElse(null);
+        DeviceCommand command = deviceCommandService.getCommandStatus(commandId);
         if (command == null) {
             return ApiResponse.error(400, "指令不存在");
         }

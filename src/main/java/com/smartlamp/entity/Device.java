@@ -28,7 +28,9 @@ public class Device {
 
     private Double latestLux;
     private Long lastSeen;
+    private Long lastTelemetryAt;   // 最近一次遥测数据的采集时间戳（毫秒）
     private Boolean lightOn = false;
 
     private LocalDateTime createdAt;
+
 }

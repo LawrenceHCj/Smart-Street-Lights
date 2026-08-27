@@ -1,0 +1,23 @@
+services:
+  mysql:
+    image: mysql:8
+    container_name: smartlamp-mysql
+    ports:
+      - "127.0.0.1:3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: "VeryStrongRootPassword@2026"
+      MYSQL_DATABASE: smartlamp
+      MYSQL_USER: smartlamp
+      MYSQL_PASSWORD: "SmartLamp@2026"
+    volumes:
+      - mysql-data:/var/lib/mysql
+
+  mosquitto:
+    image: eclipse-mosquitto
+    container_name: mosquitto
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+
+volumes:
+  mysql-data:

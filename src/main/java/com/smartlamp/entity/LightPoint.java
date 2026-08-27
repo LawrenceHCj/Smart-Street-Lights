@@ -22,7 +22,8 @@ public class LightPoint {
     private Double lux;          // 光照值
 
     @Column(nullable = false)
-    private Long ts;             // 毫秒时间戳
+    private Long ts;             // 毫秒时间戳（设备采集时间）
 
-    private LocalDateTime createdAt;
+    private LocalDateTime createdAt;          // 入库时间
+    private LocalDateTime serverReceivedAt;   // 服务器接收时间（新增）
 }
