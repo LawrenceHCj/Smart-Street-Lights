@@ -1,0 +1,32 @@
+server:
+  port: 8080
+
+spring:
+  config:
+    import: optional:file:.env[.properties]
+  datasource:
+    url: jdbc:mysql://localhost:3307/smartlamp?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=utf8
+    username: root
+    password: "123456"
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+mqtt:
+  broker: tcp://127.0.0.1:1883
+  client-id: smartlamp-backend
+  username:
+  password:
+
+# 大模型 API 配置（OpenAI 兼容协议，支持 OpenAI / DeepSeek / Kimi 等）
+# 未配置 LLM_API_KEY 时智能体自动降级为本地知识库回答
+llm:
+  api-key: ${LLM_API_KEY:}
+  base-url: ${LLM_BASE_URL:https://api.openai.com/v1}
+  model: ${LLM_MODEL:}
+
+data-retention:
+  light-point-days: 30
+  dead-letter-days: 7

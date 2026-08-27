@@ -1,0 +1,35 @@
+package com.smartlamp.entity;
+
+import lombok.Data;
+
+import jakarta.persistence.*;
+import java.time.LocalDateTime;
+
+@Data
+@Entity
+@Table(name = "device")
+public class Device {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(unique = true, nullable = false)
+    private String code;
+
+    private String name;
+    private String location;
+    private Double longitude;
+    private Double latitude;
+    private String binding;
+    private Boolean bound = true;
+    private String lampStatus = "OFF";
+    private String status;
+    private Double latestLux;
+    private Double latestTemperature;
+    private Double latestVoltage;
+    private Double latestCurrent;
+    private Double latestPower;
+    private Double latestEnergy;
+    private Long lastSeen;
+    private LocalDateTime createdAt;
+}
