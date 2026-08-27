@@ -221,4 +221,39 @@ class ConversationServiceTest {
         assertThat(org.springframework.core.annotation.AnnotatedElementUtils
                 .hasAnnotation(AgentMessage.class, jakarta.persistence.Entity.class)).isTrue();
     }
+
+    // ============ 阶段修复#8：消息分页与单页上限 ============
+
+    @Test
+    void 分页读取按页请求并限制单页上限() {
+        when(messageRepository.findByConversationIdOrderByCreatedAtAscIdAsc(
+                org.mockito.ArgumentMatchers.eq("conv-1"),
+                org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)))
+                .thenReturn(List.of());
+
+        List<AgentMessage> messages = service.listMessages("conv-1", 0, 9999);
+
+        assertThat(messages).isEmpty();
+        org.mockito.ArgumentCaptor<org.springframework.data.domain.Pageable> captor =
+                org.mockito.ArgumentCaptor.forClass(org.springframework.data.domain.Pageable.class);
+        verify(messageRepository).findByConversationIdOrderByCreatedAtAscIdAsc(
+                org.mockito.ArgumentMatchers.eq("conv-1"), captor.capture());
+        assertThat(captor.getValue().getPageSize()).isEqualTo(200); // 超过上限被截断
+    }
+
+    @Test
+    void 分页按偏移计算页码() {
+        when(messageRepository.findByConversationIdOrderByCreatedAtAscIdAsc(
+                org.mockito.ArgumentMatchers.eq("conv-1"),
+                org.mockito.ArgumentMatchers.any(org.springframework.data.domain.Pageable.class)))
+                .thenReturn(List.of());
+
+        service.listMessages("conv-1", 400, 200);
+
+        org.mockito.ArgumentCaptor<org.springframework.data.domain.Pageable> captor =
+                org.mockito.ArgumentCaptor.forClass(org.springframework.data.domain.Pageable.class);
+        verify(messageRepository).findByConversationIdOrderByCreatedAtAscIdAsc(
+                org.mockito.ArgumentMatchers.eq("conv-1"), captor.capture());
+        assertThat(captor.getValue().getPageNumber()).isEqualTo(2); // offset 400 / 200
+    }
 }

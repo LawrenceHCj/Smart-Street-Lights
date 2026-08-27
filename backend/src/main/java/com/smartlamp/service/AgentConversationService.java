@@ -15,6 +15,11 @@ import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 // Agent V3 聊天会话编排：完整聊天流程的唯一入口。
 // 收到用户消息 → 确认 Conversation 存在（无 conversationId 自动新建）→ 保存 User Message
@@ -43,6 +48,66 @@ public class AgentConversationService {
 
     // 完整聊天流程（向后兼容：conversationId 为空时自动创建新会话）
     public AskResponse chat(String question, String conversationId, String userId) {
+        return chat(question, conversationId, userId, null);
+    }
+
+    // 带幂等标识的聊天流程（阶段修复#10）：前端超时重试时携带同一 requestId，
+    // 后端返回首次结果且不重复保存消息、不重复执行工具
+    public AskResponse chat(String question, String conversationId, String userId, String requestId) {
+        if (requestId == null || requestId.isBlank()) {
+            return doChat(question, conversationId, userId);
+        }
+        String key = userId + ":" + requestId;
+        CachedAnswer cached = responseCache.get(key);
+        if (cached != null && System.currentTimeMillis() - cached.cachedAt() < IDEMPOTENCY_TTL_MS) {
+            return cached.response();
+        }
+        CompletableFuture<AskResponse> future = new CompletableFuture<>();
+        CompletableFuture<AskResponse> existing = inFlight.putIfAbsent(key, future);
+        if (existing == null) {
+            // 当前线程负责执行；其余同 key 请求等待本 future 完成
+            try {
+                AskResponse response = doChat(question, conversationId, userId);
+                if (responseCache.size() >= IDEMPOTENCY_MAX_ENTRIES) {
+                    responseCache.clear(); // 简单容量控制，防无限增长
+                }
+                responseCache.put(key, new CachedAnswer(response, System.currentTimeMillis()));
+                future.complete(response);
+            } catch (Exception e) {
+                future.completeExceptionally(e);
+            } finally {
+                inFlight.remove(key);
+            }
+        } else {
+            future = existing;
+        }
+        try {
+            // 同 requestId 的并发重试等待首个请求完成（最长 30 秒）
+            return future.get(30, TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
+            throw new BadRequestException("请求仍在处理中，请稍后重试");
+        } catch (Exception e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new BadRequestException("请求处理失败: " + e.getMessage());
+        }
+    }
+
+    // ============ 请求幂等（阶段修复#10） ============
+
+    private static final long IDEMPOTENCY_TTL_MS = 60_000;
+    private static final int IDEMPOTENCY_MAX_ENTRIES = 500;
+
+    private record CachedAnswer(AskResponse response, long cachedAt) {
+    }
+
+    private final Map<String, CachedAnswer> responseCache = new ConcurrentHashMap<>();
+    private final Map<String, CompletableFuture<AskResponse>> inFlight = new ConcurrentHashMap<>();
+
+    // 完整聊天流程（向后兼容：conversationId 为空时自动创建新会话）
+    private AskResponse doChat(String question, String conversationId, String userId) {
         if (question == null || question.isBlank()) {
             throw new BadRequestException("question 不能为空");
         }
@@ -95,10 +160,16 @@ public class AgentConversationService {
         return conversationService.createConversation(userId, firstQuestion);
     }
 
-    // 读取某个 Conversation 的完整历史（按时间升序）
+    // 读取某个 Conversation 的完整历史（按时间升序；内部使用，如摘要与历史注入）
     public List<AgentMessage> getMessages(String conversationId, String userId) {
         requireOwnConversation(conversationId, userId);
         return conversationService.listMessages(conversationId);
+    }
+
+    // 分页读取历史（阶段修复#8：对外接口走服务端分页，单页上限由 ConversationService 控制）
+    public List<AgentMessage> getMessages(String conversationId, String userId, int offset, int limit) {
+        requireOwnConversation(conversationId, userId);
+        return conversationService.listMessages(conversationId, offset, limit);
     }
 
     // 当前用户的会话列表（按最近更新倒序，只返回对外字段）

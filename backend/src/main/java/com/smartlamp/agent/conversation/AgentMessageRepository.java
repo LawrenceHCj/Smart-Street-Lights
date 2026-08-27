@@ -1,5 +1,6 @@
 package com.smartlamp.agent.conversation;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -9,6 +10,9 @@ public interface AgentMessageRepository extends JpaRepository<AgentMessage, Long
 
     // 按时间升序读取会话消息；同毫秒时按自增 id 升序兜底，保证保存顺序稳定
     List<AgentMessage> findByConversationIdOrderByCreatedAtAscIdAsc(String conversationId);
+
+    // 分页读取（阶段修复#8：会话历史全量读取改为服务端分页，防止无限增长）
+    List<AgentMessage> findByConversationIdOrderByCreatedAtAscIdAsc(String conversationId, Pageable pageable);
 
     long countByConversationId(String conversationId);
 

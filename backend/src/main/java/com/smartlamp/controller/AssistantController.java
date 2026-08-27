@@ -23,10 +23,12 @@ public class AssistantController {
         this.chatService = chatService;
     }
 
-    // POST /api/assistant/chat（兼容旧调用：只传 question 即可，conversationId 为空时自动新建会话）
+    // POST /api/assistant/chat（兼容旧调用：只传 question 即可，conversationId 为空时自动新建会话；
+    // requestId 可选——前端超时重试携带同一 requestId 时不重复保存消息）
     @PostMapping("/chat")
     public ApiResponse<AskResponse> chat(@RequestBody AskRequest request) {
-        return ApiResponse.success(chatService.chat(request.getQuestion(), request.getConversationId(), currentUser()));
+        return ApiResponse.success(chatService.chat(
+                request.getQuestion(), request.getConversationId(), currentUser(), request.getRequestId()));
     }
 
     // POST /api/assistant/conversations 创建新会话（可带首条问题作标题）
@@ -48,10 +50,13 @@ public class AssistantController {
         return ApiResponse.success(chatService.getConversationDetail(conversationId, currentUser()));
     }
 
-    // GET /api/assistant/conversations/{conversationId}/messages 读取会话完整历史（按时间升序）
+    // GET /api/assistant/conversations/{conversationId}/messages 读取会话历史（按时间升序；
+    // offset/limit 可选，服务端分页，单页上限 200——阶段修复#8）
     @GetMapping("/conversations/{conversationId}/messages")
-    public ApiResponse<List<AgentMessage>> messages(@PathVariable String conversationId) {
-        return ApiResponse.success(chatService.getMessages(conversationId, currentUser()));
+    public ApiResponse<List<AgentMessage>> messages(@PathVariable String conversationId,
+                                                    @RequestParam(defaultValue = "0") int offset,
+                                                    @RequestParam(defaultValue = "200") int limit) {
+        return ApiResponse.success(chatService.getMessages(conversationId, currentUser(), offset, limit));
     }
 
     // DELETE /api/assistant/conversations/{conversationId} 删除会话及其全部历史消息

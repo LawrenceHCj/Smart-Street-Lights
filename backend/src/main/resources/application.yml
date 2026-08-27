@@ -26,6 +26,12 @@ llm:
   api-key: ${LLM_API_KEY:}
   base-url: ${LLM_BASE_URL:https://api.openai.com/v1}
   model: ${LLM_MODEL:}
+  # 单次模型请求超时（毫秒）：聊天链路最多 3 轮工具调用，前端聊天接口超时建议不小于 3×该值
+  timeout-ms: 30000
+
+agent:
+  # Agent 确认执行后等待设备回执的窗口（毫秒）；置 0 表示不等待，直接返回 COMMAND_ACCEPTED
+  ack-timeout-ms: 5000
 
 data-retention:
   light-point-days: 30

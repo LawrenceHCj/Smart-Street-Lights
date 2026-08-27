@@ -85,6 +85,21 @@ public class ConversationService {
         return messageRepository.findByConversationIdOrderByCreatedAtAscIdAsc(conversationId.trim());
     }
 
+    // 分页读取会话消息（阶段修复#8）：服务端分页，单页上限 MAX_PAGE_SIZE，
+    // 防止会话历史无限增长导致全量读取拖垮数据库
+    public static final int MAX_PAGE_SIZE = 200;
+
+    public List<AgentMessage> listMessages(String conversationId, int offset, int limit) {
+        if (conversationId == null || conversationId.isBlank()) {
+            throw new BadRequestException("conversationId 不能为空");
+        }
+        int safeLimit = Math.min(Math.max(limit, 1), MAX_PAGE_SIZE);
+        int safeOffset = Math.max(offset, 0);
+        return messageRepository.findByConversationIdOrderByCreatedAtAscIdAsc(
+                conversationId.trim(),
+                org.springframework.data.domain.PageRequest.of(safeOffset / safeLimit, safeLimit));
+    }
+
     // 删除会话及其全部历史消息（同一事务：要么全删，要么全不删）
     @Transactional
     public void deleteConversation(String conversationId) {

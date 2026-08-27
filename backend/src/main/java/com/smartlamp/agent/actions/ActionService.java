@@ -7,6 +7,8 @@ import com.smartlamp.service.DeviceService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.util.Set;
+
 // Action 确认/取消服务（阶段17/20）：用户确认接口的唯一业务入口。
 // 确认时执行二次校验，全部通过才允许执行；校验不通过该 Action 置 FAILED（终态）并拒绝：
 //   Action 存在 → 未过期 → 状态仍为 PENDING_CONFIRMATION → 参数合法复核
@@ -29,9 +31,12 @@ public class ActionService {
     @Autowired
     private ConfigService configService;
 
-    // 用户确认：二次校验通过 → 确认 → 立即交由网关执行
-    public synchronized AgentAction confirmAndExecute(String actionId) {
-        AgentAction action = requirePending(actionId);
+    // 拥有控制权限的角色（与手动控制接口的角色限制保持一致；municipal 仅可查看）
+    private static final Set<String> CONTROL_ROLES = Set.of("admin", "operator");
+
+    // 用户确认：归属/角色校验 + 二次校验全部通过 → 确认 → 立即交由网关执行
+    public synchronized AgentAction confirmAndExecute(String actionId, String currentUser, String role) {
+        AgentAction action = requirePending(actionId, currentUser, role);
 
         // 参数合法性复核（创建时已校验，此处为二次防线）
         actionManager.revalidate(action);
@@ -80,8 +85,8 @@ public class ActionService {
     }
 
     // 用户取消：仅允许取消 PENDING_CONFIRMATION 状态的 Action
-    public synchronized AgentAction cancel(String actionId) {
-        AgentAction action = requirePending(actionId);
+    public synchronized AgentAction cancel(String actionId, String currentUser, String role) {
+        AgentAction action = requirePending(actionId, currentUser, role);
         actionManager.cancel(actionId);
         return action;
     }
@@ -92,10 +97,20 @@ public class ActionService {
         return actionManager.cancelPendingByConversation(conversationId);
     }
 
-    // 存在性 → 有效期 → 状态仍为 PENDING_CONFIRMATION
-    private AgentAction requirePending(String actionId) {
+    // 存在性 → 归属（当前用户必须等于发起者，不泄露他人 Action 的存在性）→ 角色权限 → 有效期 → 状态仍为 PENDING_CONFIRMATION
+    private AgentAction requirePending(String actionId, String currentUser, String role) {
         AgentAction action = actionManager.find(actionId)
                 .orElseThrow(() -> new ActionRejectedException("Action 不存在: " + actionId));
+
+        // 归属校验（安全修复：Action ID 泄露时，其他登录用户不得确认或取消该操作）
+        if (currentUser == null || !currentUser.equals(action.getRequestedBy())) {
+            throw new ActionRejectedException("Action 不存在或不属于当前用户: " + actionId);
+        }
+        // 角色校验：仅 admin/operator 具备控制权限（municipal 仅可查看，防止通过 Agent 绕过手动控制限制）
+        if (role == null || !CONTROL_ROLES.contains(role)) {
+            throw new ActionRejectedException("当前角色无控制权限，仅 admin/operator 可确认控制操作");
+        }
+
         actionManager.checkExpiry(action);
         if (action.getStatus() != ActionStatus.PENDING_CONFIRMATION) {
             throw new ActionRejectedException("只有待确认状态的 Action 才能操作（当前: "
