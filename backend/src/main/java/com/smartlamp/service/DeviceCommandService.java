@@ -42,6 +42,9 @@ public class DeviceCommandService {
         }
 
         String normalizedAction = normalizeAction(action);
+        if (!"ONLINE".equals(device.getStatus())) {
+            throw new BadRequestException("设备离线，无法下发指令: " + deviceId);
+        }
         LocalDateTime now = LocalDateTime.now();
         DeviceCommand command = new DeviceCommand();
         command.setCommandId(UUID.randomUUID().toString());

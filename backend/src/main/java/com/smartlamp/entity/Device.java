@@ -31,5 +31,6 @@ public class Device {
     private Double latestPower;
     private Double latestEnergy;
     private Long lastSeen;
+    private Long lastTelemetryAt;
     private LocalDateTime createdAt;
 }

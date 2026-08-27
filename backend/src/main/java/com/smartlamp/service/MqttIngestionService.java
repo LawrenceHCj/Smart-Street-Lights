@@ -17,6 +17,7 @@ import java.util.regex.Pattern;
 public class MqttIngestionService {
     private static final Pattern TOPIC_PATTERN = Pattern.compile("^device/([^/]+)/(data|heartbeat|cmd_ack)$");
     private static final int MAX_PAYLOAD_LENGTH = 65_535;
+    private static final long MAX_TIME_SKEW_MS = 5 * 60 * 1000;
 
     private final DeviceRepository deviceRepository;
     private final LightPointRepository lightPointRepository;
@@ -72,13 +73,17 @@ public class MqttIngestionService {
         }
 
         long ts = readTimestamp(json.get("ts"));
+        long now = System.currentTimeMillis();
+        if (ts > now + MAX_TIME_SKEW_MS || ts < now - MAX_TIME_SKEW_MS) return;
         Device device = deviceRepository.findByCode(deviceId).orElse(null);
         boolean recoveredFromOffline = device != null && "OFFLINE".equals(device.getStatus());
         if (device == null) device = newDevice(deviceId);
 
         if ("data".equals(messageType)) {
+            if (device.getLastTelemetryAt() != null && ts <= device.getLastTelemetryAt()) return;
             ingestTelemetry(device, json, payload, ts);
         } else {
+            if (device.getLastSeen() != null && ts <= device.getLastSeen()) return;
             device.setLastSeen(ts);
             device.setStatus("ONLINE");
             deviceRepository.save(device);
@@ -104,7 +109,8 @@ public class MqttIngestionService {
         device.setLatestPower(power);
         device.setLatestEnergy(energy);
         if (lampStatus != null) device.setLampStatus(lampStatus);
-        device.setLastSeen(ts);
+        device.setLastSeen(device.getLastSeen() == null ? ts : Math.max(device.getLastSeen(), ts));
+        device.setLastTelemetryAt(ts);
         device.setStatus("ONLINE");
         deviceRepository.save(device);
 
@@ -123,6 +129,7 @@ public class MqttIngestionService {
         point.setTs(ts);
         point.setRawPayload(rawPayload);
         point.setCreatedAt(LocalDateTime.now());
+        point.setServerReceivedAt(LocalDateTime.now());
         lightPointRepository.save(point);
     }
 

@@ -15,11 +15,13 @@ public class SseHub {
 
     public SseHub(SummaryService summaryService) { this.summaryService = summaryService; }
 
-    public SseEmitter subscribe() {
-        SseEmitter emitter = new SseEmitter(0L);
+    public synchronized SseEmitter subscribe() {
+        if (emitters.size() >= 50) throw new IllegalStateException("SSE 连接数已达上限");
+        SseEmitter emitter = new SseEmitter(60_000L);
         emitters.add(emitter);
         emitter.onCompletion(() -> emitters.remove(emitter));
         emitter.onTimeout(() -> emitters.remove(emitter));
+        emitter.onError(error -> emitters.remove(emitter));
         send(emitter);
         return emitter;
     }

@@ -38,4 +38,5 @@ public class LightPoint {
     private String rawPayload;
 
     private LocalDateTime createdAt;
+    private LocalDateTime serverReceivedAt;
 }
