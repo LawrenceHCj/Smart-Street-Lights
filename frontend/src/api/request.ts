@@ -12,7 +12,7 @@ declare module 'axios' {
 
 const request = axios.create({
   baseURL: '/api',
-  timeout: 10000,
+  timeout: 60000,
 })
 
 let redirectingToLogin = false
