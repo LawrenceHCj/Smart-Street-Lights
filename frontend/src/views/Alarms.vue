@@ -63,7 +63,11 @@
         </div>
       </div>
       <div class="table-wrap">
-        <el-table :data="filteredGroups">
+        <div class="device-search">
+          <el-input v-model="deviceQuery" placeholder="查找设备编号" clearable :prefix-icon="Search" style="width: 250px" />
+          <span v-if="deviceQuery.trim()" class="search-hits">匹配 {{ searchedGroups.length }} 条</span>
+        </div>
+        <el-table :data="pagedGroups">
           <el-table-column label="设备" width="120">
             <template #default="{ row }">
               <span class="num">{{ row.deviceId }}</span>
@@ -120,15 +124,26 @@
             </div>
           </template>
         </el-table>
+        <div v-if="searchedGroups.length" class="pager">
+          <el-pagination
+            :current-page="page"
+            :page-size="pageSize"
+            :total="searchedGroups.length"
+            :page-sizes="[10, 20, 50]"
+            layout="total, sizes, prev, pager, next"
+            @current-change="onPage"
+            @size-change="onSize"
+          />
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { Bell, CircleCheck, CircleClose, Finished } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { Bell, CircleCheck, CircleClose, Finished, Search } from '@element-plus/icons-vue'
+import { ElMessage, ElPagination } from 'element-plus'
 import { listAlarms, ackAlarm } from '../api/alarm'
 import type { AlarmGroup, AlarmGroupStatus, AlarmLevel, AlarmVO } from '../api/alarm'
 import { listDevices } from '../api/device'
@@ -158,6 +173,35 @@ const filteredGroups = computed(() => {
   if (filter.value === 'pending')
     return groups.value.filter((g) => g.status === 'OPEN' || g.status === 'RECOVERED')
   return groups.value.filter((g) => g.status === 'ACKED' || g.status === 'CLOSED')
+})
+
+// 设备查找栏：在状态筛选结果上按设备编号实时过滤
+const deviceQuery = ref('')
+const searchedGroups = computed(() => {
+  const q = deviceQuery.value.trim().toLowerCase()
+  if (!q) return filteredGroups.value
+  return filteredGroups.value.filter((g) => (g.deviceId || '').toLowerCase().includes(q))
+})
+
+// 客户端分页：告警按「设备+类型」聚合后的分组列表分页展示
+const page = ref(1)
+const pageSize = ref(10)
+const pagedGroups = computed(() => {
+  const start = (page.value - 1) * pageSize.value
+  return searchedGroups.value.slice(start, start + pageSize.value)
+})
+function onPage(p: number) {
+  page.value = p
+}
+function onSize(s: number) {
+  pageSize.value = s
+  page.value = 1
+}
+// 切换筛选回到第 1 页；列表变化后若页码越界则回退到最后一页
+watch(filter, () => (page.value = 1))
+watch(searchedGroups, (g) => {
+  const maxPage = Math.max(1, Math.ceil(g.length / pageSize.value))
+  if (page.value > maxPage) page.value = maxPage
 })
 
 const statusLabel: Record<AlarmGroupStatus, string> = {
@@ -270,6 +314,24 @@ onUnmounted(() => {
 
 .table-wrap {
   padding: 6px 16px 16px;
+}
+.device-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0 12px;
+}
+.device-search .el-input {
+  width: 250px;
+}
+.search-hits {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.pager {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 12px;
 }
 .level-pill {
   display: inline-flex;

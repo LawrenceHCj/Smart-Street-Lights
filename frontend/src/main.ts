@@ -2,6 +2,10 @@ import { createApp } from 'vue'
 import {
   ElButton,
   ElDialog,
+  ElDrawer,
+  ElDropdown,
+  ElDropdownItem,
+  ElDropdownMenu,
   ElForm,
   ElFormItem,
   ElIcon,
@@ -31,6 +35,10 @@ const app = createApp(App)
 const elementComponents = [
   ElButton,
   ElDialog,
+  ElDrawer,
+  ElDropdown,
+  ElDropdownItem,
+  ElDropdownMenu,
   ElForm,
   ElFormItem,
   ElIcon,

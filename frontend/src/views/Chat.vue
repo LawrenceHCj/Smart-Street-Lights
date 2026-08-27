@@ -69,6 +69,67 @@
             <span class="status-dot online"></span> 就绪
           </span>
         </div>
+        <div v-if="isMunicipal" class="readonly-note" role="note">
+          <el-icon class="readonly-icon"><Lock /></el-icon>
+          <span>当前为市政人员只读权限：可查询设备状态与维护知识，无法通过智能体控制设备开关。</span>
+        </div>
+      </div>
+
+      <div class="history">
+        <button class="history-toggle" type="button" :aria-expanded="historyOpen" @click="toggleHistory">
+          <span class="history-caret" :class="{ open: historyOpen }">▾</span>
+          <span class="history-title">历史会话记录查询</span>
+          <span class="history-hint">按最近活动时间筛选会话 · 分页展示</span>
+        </button>
+        <div v-if="historyOpen" class="history-body">
+          <div class="history-form">
+            <el-date-picker
+              v-model="histRange"
+              type="datetimerange"
+              range-separator="至"
+              start-placeholder="开始时间"
+              end-placeholder="结束时间"
+              :disabled-date="disableFutureDate"
+              :default-time="histDefaultTime"
+              :disabled="histLoading"
+              style="width: 400px"
+            />
+            <el-button type="primary" :loading="histLoading" @click="queryHistory">查询</el-button>
+          </div>
+          <div class="history-meta">
+            <span v-if="histError" class="history-error">{{ histError }}</span>
+            <span v-else-if="histSearched" class="history-info">
+              {{ histConvs.length ? `共 ${histConvs.length} 个会话落在所选时间范围` : '所选时间范围内暂无会话记录' }}
+            </span>
+          </div>
+          <el-table v-if="histConvs.length" :data="pagedHistConvs" size="small" height="250">
+            <el-table-column label="会话" min-width="220">
+              <template #default="{ row }"><span class="conv-title-txt">{{ row.title || '新会话' }}</span></template>
+            </el-table-column>
+            <el-table-column label="最近活动" min-width="150">
+              <template #default="{ row }"><span class="num">{{ formatTime(row.lastMessageAt) }}</span></template>
+            </el-table-column>
+            <el-table-column label="创建时间" min-width="150">
+              <template #default="{ row }"><span class="num">{{ formatTime(row.createdAt) }}</span></template>
+            </el-table-column>
+            <el-table-column label="操作" width="80" align="right">
+              <template #default="{ row }">
+                <el-button size="small" text type="primary" @click="openConv(row)">打开</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <div v-if="histConvs.length" class="history-pager">
+            <el-pagination
+              :current-page="histPage"
+              :page-size="histPageSize"
+              :total="histConvs.length"
+              :page-sizes="[50, 100, 150]"
+              layout="total, sizes, prev, pager, next"
+              @current-change="onHistPage"
+              @size-change="onHistSize"
+            />
+          </div>
+        </div>
       </div>
 
       <div ref="listRef" class="messages" role="log" aria-live="polite" aria-relevant="additions">
@@ -162,8 +223,8 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, watch } from 'vue'
-import { Delete, Document, Menu, Plus, Promotion, ReadingLamp, WarningFilled } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { Delete, Document, Lock, Menu, Plus, Promotion, ReadingLamp, WarningFilled } from '@element-plus/icons-vue'
+import { ElDatePicker, ElMessage, ElMessageBox, ElPagination } from 'element-plus'
 import {
   ask,
   listConversations,
@@ -172,6 +233,7 @@ import {
   parseMessageSources,
 } from '../api/agent'
 import type { AgentMessage, Conversation, Source } from '../api/agent'
+import { getCurrentRole } from '../utils/auth'
 
 interface Msg {
   role: 'user' | 'bot'
@@ -197,6 +259,91 @@ const sidebarError = ref('')
 const deleting = ref(false)
 const loadingHistory = ref(false)
 const isFresh = computed(() => !currentId.value)
+
+// 角色标识：市政人员只读（可问答，不可通过智能体控制设备；控制门禁由后端 Agent 强制）
+const isMunicipal = getCurrentRole() === 'municipal'
+
+// 历史会话记录查询（纯前端：后端 /assistant/conversations 仅返回会话列表，时间过滤与分页在客户端完成）
+const DAY = 24 * 3600 * 1000
+const HOUR = 3600_000
+const MAX_SPAN = 30 * DAY // 最大查询跨度
+const historyOpen = ref(false)
+const histRange = ref<[Date, Date] | null>(null)
+const histLoading = ref(false)
+const histError = ref('')
+const histSearched = ref(false)
+const histConvs = ref<Conversation[]>([])
+const histPage = ref(1)
+const histPageSize = ref(100)
+// datetimerange 默认时间：开始 00:00、结束 23:59:59，避免选「当天」时结束时间落到 00:00 而查不到当天记录
+const histDefaultTime: [Date, Date] = [new Date(2000, 1, 1, 0, 0, 0), new Date(2000, 1, 1, 23, 59, 59)]
+
+const pagedHistConvs = computed(() => {
+  const offset = (histPage.value - 1) * histPageSize.value
+  return histConvs.value.slice(offset, offset + histPageSize.value)
+})
+
+function disableFutureDate(d: Date) {
+  return d.getTime() > Date.now()
+}
+function onHistPage(p: number) {
+  histPage.value = p
+}
+function onHistSize(s: number) {
+  histPageSize.value = s
+  histPage.value = 1
+}
+/** 会话的「最近活动时间」，缺省回退到更新时间/创建时间 */
+function convTs(c: Conversation): number {
+  const iso = c.lastMessageAt ?? c.updatedAt ?? c.createdAt
+  return iso ? new Date(iso).getTime() : 0
+}
+function toggleHistory() {
+  historyOpen.value = !historyOpen.value
+  if (historyOpen.value && !histRange.value) {
+    const now = Date.now()
+    histRange.value = [new Date(now - 30 * DAY), new Date(now)]
+  }
+}
+async function queryHistory() {
+  if (!histRange.value?.[0] || !histRange.value?.[1]) {
+    ElMessage.warning('请选择时间范围')
+    return
+  }
+  const start = histRange.value[0].getTime()
+  const end = histRange.value[1].getTime()
+  if (end <= start) {
+    ElMessage.warning('结束时间需晚于开始时间')
+    return
+  }
+  if (end - start > MAX_SPAN) {
+    ElMessage.warning(`查询跨度不能超过 ${MAX_SPAN / DAY} 天`)
+    return
+  }
+  histLoading.value = true
+  histError.value = ''
+  histSearched.value = false
+  try {
+    const list = await listConversations()
+    const filtered = list
+      .filter((c) => {
+        const t = convTs(c)
+        return t >= start && t <= end
+      })
+      .sort((a, b) => convTs(b) - convTs(a))
+    histConvs.value = filtered
+    histPage.value = 1
+    histSearched.value = true
+  } catch {
+    histError.value = '会话记录查询失败，请检查后端服务'
+  } finally {
+    histLoading.value = false
+  }
+}
+function openConv(c: Conversation) {
+  openConversation(c.conversationId)
+  historyOpen.value = false // 收起面板，聚焦打开的会话
+}
 
 watch(currentId, (v) => {
   if (v) localStorage.setItem(KEY, v)
@@ -366,6 +513,7 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   padding: 16px 20px;
   border-bottom: 1px solid var(--border-subtle);
 }
@@ -678,7 +826,8 @@ onMounted(async () => {
 }
 /* Full-height intelligence desk */
 .chat-wrap { max-width: 1380px; height: calc(100vh - 182px); margin: 0 auto; display: grid; grid-template-columns: 264px minmax(0, 1fr); position: relative; }
-.chat { width: auto; max-width: none; height: 100%; min-width: 0; display: grid; grid-template-rows: auto 1fr auto; border: 1px solid rgba(208,255,111,.18); border-left: 0; border-radius: 0; color: #e5f1ed; background: var(--ink); }
+.chat { width: auto; max-width: none; height: 100%; min-width: 0; display: grid; grid-template-rows: auto auto 1fr auto; border: 1px solid rgba(208,255,111,.18); border-left: 0; border-radius: 0; color: #e5f1ed; background: var(--ink); }
+.chat .messages { min-height: 0; }
 .sidebar { min-height: 0; display: flex; flex-direction: column; background: var(--ink-soft); border: 1px solid rgba(208,255,111,.18); border-right: 0; }
 .sidebar-head { min-height: 74px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,.1); }
 .sidebar-title { color: #fff; font-size: 13px; font-weight: 600; }
@@ -707,6 +856,43 @@ onMounted(async () => {
 .input-zone { border-color: rgba(255,255,255,.1); background: #0b2c25; }
 .chip { border-radius: 0; color: #bad0c8; border-color: rgba(255,255,255,.18); background: transparent; }
 .chip:hover { color: var(--signal); border-color: var(--signal); }
+
+/* 市政人员只读提示条（可问答，不可通过智能体控制设备） */
+.readonly-note { flex: 1 0 100%; display: flex; align-items: center; gap: 8px; margin-top: 8px; padding: 8px 12px; font-size: 12px; color: #ffd9a0; background: rgba(250,152,25,.1); border: 1px solid rgba(250,152,25,.22); }
+.readonly-icon { color: var(--accent); font-size: 14px; flex: none; }
+
+/* 历史光照查询面板 */
+.history { border-bottom: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.035); }
+.history-toggle { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 20px; border: 0; background: transparent; color: #bad0c8; font-family: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.history-toggle:hover { color: var(--signal); }
+.history-caret { font-size: 11px; transition: transform .2s ease; }
+.history-caret.open { transform: rotate(180deg); }
+.history-title { font-weight: 600; color: #fff; }
+.history-hint { margin-left: auto; font-size: 11px; color: #6f877f; }
+.history-body { padding: 12px 20px 16px; display: flex; flex-direction: column; gap: 10px; }
+.history-form { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.history-meta { min-height: 20px; font-size: 12px; }
+.history-error { color: #ffaaa3; }
+.history-info { color: #8ba39a; }
+.history-pager { display: flex; justify-content: flex-end; }
+.history-pager :deep(.el-pagination) { --el-pagination-bg-color: transparent; --el-pagination-button-color: #bad0c8; --el-pagination-hover-color: var(--signal); --el-pagination-text-color: #8ba39a; }
+.history-body .conv-title-txt { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 会话记录表格深色主题：白色字体 */
+.history-body :deep(.el-table) {
+  --el-table-bg-color: transparent;
+  --el-table-tr-bg-color: transparent;
+  --el-table-header-bg-color: rgba(255,255,255,.08);
+  --el-table-header-text-color: #fff;
+  --el-table-text-color: #fff;
+  --el-table-border-color: rgba(255,255,255,.12);
+  --el-table-header-border-color: rgba(255,255,255,.12);
+  --el-table-row-hover-bg-color: rgba(255,255,255,.06);
+  color: #fff;
+  background: transparent;
+}
+.history-body :deep(.el-table__inner-wrapper::before) { background-color: transparent; }
+.history-body :deep(.el-table .el-button.is-text) { color: #fff; }
+.history-body :deep(.el-table .el-button.is-text:hover) { color: var(--signal); }
 
 @media (max-width: 900px) {
   .chat-wrap { grid-template-columns: 1fr; }

@@ -108,6 +108,7 @@ async function doLogin() {
     const response = await login(username.value.trim(), password.value)
     localStorage.setItem('token', response.token)
     localStorage.setItem('username', response.username)
+    localStorage.setItem('role', response.role)
     await router.replace('/dashboard')
   } catch {
     formError.value = '登录失败，请核对账号密码或检查服务连接。'

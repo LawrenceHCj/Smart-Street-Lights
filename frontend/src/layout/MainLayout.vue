@@ -19,11 +19,11 @@
         <div ref="accountMenuRef" class="account-menu">
           <button class="user-trigger" type="button" aria-label="打开用户菜单" aria-controls="account-menu-panel" :aria-expanded="accountMenuOpen" @click="accountMenuOpen = !accountMenuOpen">
             <span class="avatar">{{ currentUser[0]?.toUpperCase() ?? 'U' }}</span>
-            <span class="user-copy"><strong>{{ currentUser }}</strong><small>运维席位</small></span><el-icon class="account-arrow" :class="{ open: accountMenuOpen }"><ArrowDown /></el-icon>
+            <span class="user-copy"><strong>{{ currentUser }}</strong><small>{{ currentRoleLabel }}</small></span><el-icon class="account-arrow" :class="{ open: accountMenuOpen }"><ArrowDown /></el-icon>
           </button>
           <div v-if="accountMenuOpen" id="account-menu-panel" class="account-menu-panel" role="menu">
-            <div class="account-menu-head"><strong>{{ currentUser }}</strong><span>当前运维席位</span></div>
-            <button type="button" role="menuitem" @click="navigate('/users')"><el-icon><User /></el-icon><span>用户与权限</span></button>
+            <div class="account-menu-head"><strong>{{ currentUser }}</strong><span>当前{{ currentRoleLabel }}</span></div>
+            <button v-if="currentUserIsAdmin" type="button" role="menuitem" @click="navigate('/users')"><el-icon><User /></el-icon><span>用户与权限</span></button>
             <button type="button" role="menuitem" class="danger" @click="logout"><el-icon><SwitchButton /></el-icon><span>退出登录</span></button>
           </div>
         </div>
@@ -50,6 +50,7 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowDown, Bell, ChatDotRound, DataBoard, MoreFilled, Operation, ReadingLamp, Sunny, SwitchButton, Tools, User } from '@element-plus/icons-vue'
+import { clearSession, getCurrentRole, isCurrentUserAdmin } from '../utils/auth'
 
 const route = useRoute()
 const router = useRouter()
@@ -57,12 +58,15 @@ const isOnline = ref(navigator.onLine)
 const fullClock = ref('')
 const clockIso = ref('')
 const currentUser = localStorage.getItem('username') || '用户'
+const currentRole = getCurrentRole()
+const currentUserIsAdmin = isCurrentUserAdmin()
+const currentRoleLabel = currentRole === 'admin' ? '管理席位' : currentRole === 'municipal' ? '市政席位' : '运维席位'
 const mainRef = ref<HTMLElement>()
 const accountMenuRef = ref<HTMLElement>()
 const accountMenuOpen = ref(false)
 let timer: ReturnType<typeof setInterval> | null = null
 
-const nav = [
+const allNav = [
   { index: '01', path: '/dashboard', label: '全域态势', shortLabel: '态势', icon: DataBoard },
   { index: '02', path: '/monitor', label: '光照脉络', shortLabel: '监测', icon: Sunny },
   { index: '03', path: '/control', label: '策略控制', shortLabel: '控制', icon: Operation },
@@ -71,13 +75,14 @@ const nav = [
   { index: '06', path: '/chat', label: '智能研判', shortLabel: '助手', icon: ChatDotRound },
   { index: '07', path: '/users', label: '席位权限', shortLabel: '用户', icon: User },
 ]
+const nav = allNav.filter((item) => item.path !== '/users' || currentUserIsAdmin)
 const mobileNav = nav.slice(0, 4)
 const moreNav = nav.slice(4)
 const moreActive = computed(() => moreNav.some((item) => item.path === route.path))
 
 function tick() { const d = new Date(); const p = (n: number) => String(n).padStart(2, '0'); fullClock.value = `${p(d.getHours())}:${p(d.getMinutes())}`; clockIso.value = d.toISOString() }
 function navigate(path: string) { accountMenuOpen.value = false; if (route.path !== path) router.push(path) }
-function logout() { accountMenuOpen.value = false; localStorage.removeItem('token'); localStorage.removeItem('username'); router.push('/login') }
+function logout() { accountMenuOpen.value = false; clearSession(); router.push('/login') }
 function onMoreCommand(command: string) { command === 'logout' ? logout() : navigate(command) }
 function updateNetworkStatus() { isOnline.value = navigator.onLine }
 function onDocumentPointerDown(event: PointerEvent) { if (!accountMenuRef.value?.contains(event.target as Node)) accountMenuOpen.value = false }

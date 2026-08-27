@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
+import { clearSession } from '../utils/auth'
 
 // 自定义请求配置项：silent = 该请求失败时不弹全局错误提示。
 // 用于"约定接口"（后端可能尚未实现），由调用方自行降级处理。
@@ -19,8 +20,7 @@ let redirectingToLogin = false
 function handleExpiredSession(requestUrl?: string) {
   if (requestUrl === '/auth/login' || redirectingToLogin) return
   redirectingToLogin = true
-  localStorage.removeItem('token')
-  localStorage.removeItem('username')
+  clearSession()
   ElMessage.warning('登录已失效，请重新登录')
   window.location.replace('/login')
 }
