@@ -39,13 +39,14 @@ class MqttIngestionServiceTest {
 
     @Test
     void persistsStructuredTelemetryAndRawPayload() throws Exception {
+        long now = System.currentTimeMillis();
         when(deviceRepository.findByCode("SL-001")).thenReturn(Optional.empty());
-        when(lightPointRepository.existsByDeviceCodeAndTs("SL-001", 1755835200000L)).thenReturn(false);
+        when(lightPointRepository.existsByDeviceCodeAndTs("SL-001", now)).thenReturn(false);
         String payload = """
                 {"deviceId":"SL-001","lux":320.5,"temperature":27.2,"voltage":220.1,
                  "current":0.38,"power":83.6,"energy":14.7,"lampStatus":"ON","ts":1755835200000,
                  "vendorField":"kept in raw payload"}
-                """;
+                """.replace("1755835200000", Long.toString(now));
 
         service.ingest("device/SL-001/data", payload);
 
@@ -58,6 +59,7 @@ class MqttIngestionServiceTest {
         assertThat(device.getLatestVoltage()).isEqualTo(220.1);
         assertThat(device.getLampStatus()).isEqualTo("ON");
         assertThat(device.getStatus()).isEqualTo("ONLINE");
+        assertThat(device.getLastTelemetryAt()).isEqualTo(now);
 
         ArgumentCaptor<LightPoint> pointCaptor = ArgumentCaptor.forClass(LightPoint.class);
         verify(lightPointRepository).save(pointCaptor.capture());
@@ -65,17 +67,19 @@ class MqttIngestionServiceTest {
         assertThat(point.getPower()).isEqualTo(83.6);
         assertThat(point.getEnergy()).isEqualTo(14.7);
         assertThat(point.getRawPayload()).contains("vendorField");
+        assertThat(point.getServerReceivedAt()).isNotNull();
     }
 
     @Test
     void heartbeatUpdatesSnapshotWithoutHistoryPoint() throws Exception {
+        long now = System.currentTimeMillis();
         Device device = new Device();
         device.setCode("SL-001");
         when(deviceRepository.findByCode("SL-001")).thenReturn(Optional.of(device));
 
-        service.ingest("device/SL-001/heartbeat", "{\"ts\":1755835200000}");
+        service.ingest("device/SL-001/heartbeat", "{\"ts\":" + now + "}");
 
-        assertThat(device.getLastSeen()).isEqualTo(1755835200000L);
+        assertThat(device.getLastSeen()).isEqualTo(now);
         assertThat(device.getStatus()).isEqualTo("ONLINE");
         verify(deviceRepository).save(device);
         verifyNoInteractions(lightPointRepository);
@@ -83,15 +87,57 @@ class MqttIngestionServiceTest {
 
     @Test
     void duplicateQosMessageDoesNotCreateAnotherHistoryPoint() throws Exception {
+        long now = System.currentTimeMillis();
         Device device = new Device();
         device.setCode("SL-001");
         when(deviceRepository.findByCode("SL-001")).thenReturn(Optional.of(device));
-        when(lightPointRepository.existsByDeviceCodeAndTs("SL-001", 1755835200000L)).thenReturn(true);
+        when(lightPointRepository.existsByDeviceCodeAndTs("SL-001", now)).thenReturn(true);
 
-        service.ingest("device/SL-001/data", "{\"lux\":80,\"ts\":1755835200000}");
+        service.ingest("device/SL-001/data", "{\"lux\":80,\"ts\":" + now + "}");
 
         verify(deviceRepository).save(device);
         verify(lightPointRepository, never()).save(any());
+    }
+
+    @Test
+    void ignoresTelemetryAndHeartbeatOutsideClockWindow() throws Exception {
+        long now = System.currentTimeMillis();
+        for (String type : new String[]{"data", "heartbeat"}) {
+            for (long ts : new long[]{now - 600_000, now + 600_000}) {
+                service.ingest("device/SL-001/" + type, "{\"lux\":80,\"ts\":" + ts + "}");
+            }
+        }
+        verifyNoInteractions(deviceRepository, lightPointRepository, alarmService);
+    }
+
+    @Test
+    void ignoresOlderTelemetryAndHeartbeatWithoutRecoveringOfflineAlarm() throws Exception {
+        long now = System.currentTimeMillis();
+        Device device = new Device();
+        device.setCode("SL-001");
+        device.setStatus("OFFLINE");
+        device.setLastSeen(now);
+        device.setLastTelemetryAt(now);
+        when(deviceRepository.findByCode("SL-001")).thenReturn(Optional.of(device));
+        for (String type : new String[]{"data", "heartbeat"}) {
+            service.ingest("device/SL-001/" + type, "{\"lux\":80,\"ts\":" + (now - 1000) + "}");
+        }
+        verify(deviceRepository, never()).save(any());
+        verifyNoInteractions(lightPointRepository, alarmService);
+        assertThat(device.getStatus()).isEqualTo("OFFLINE");
+    }
+
+    @Test
+    void telemetryDoesNotMoveLastSeenBehindNewerHeartbeat() throws Exception {
+        long now = System.currentTimeMillis();
+        Device device = new Device();
+        device.setCode("SL-001");
+        device.setLastSeen(now);
+        when(deviceRepository.findByCode("SL-001")).thenReturn(Optional.of(device));
+        service.ingest("device/SL-001/data", "{\"lux\":80,\"ts\":" + (now - 1000) + "}");
+        assertThat(device.getLastSeen()).isEqualTo(now);
+        assertThat(device.getLastTelemetryAt()).isEqualTo(now - 1000);
+        verify(lightPointRepository).save(any());
     }
 
     @Test
