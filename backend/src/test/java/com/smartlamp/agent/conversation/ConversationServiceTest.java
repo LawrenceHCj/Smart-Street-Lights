@@ -209,4 +209,16 @@ class ConversationServiceTest {
                 .hasMessageContaining("会话不存在");
         verify(messageRepository, org.mockito.Mockito.never()).deleteByConversationId(any());
     }
+
+    // ============ 阶段31：持久化设计声明 ============
+
+    @Test
+    void 会话与消息为JPA持久化实体服务重启后仍存在() {
+        // 设计声明：Conversation/Message 走 MySQL（JPA），服务重启后历史仍在；
+        // 与内存态的 AgentAction（重启丢失）形成对照，限制见阶段31 报告。
+        assertThat(org.springframework.core.annotation.AnnotatedElementUtils
+                .hasAnnotation(AgentConversation.class, jakarta.persistence.Entity.class)).isTrue();
+        assertThat(org.springframework.core.annotation.AnnotatedElementUtils
+                .hasAnnotation(AgentMessage.class, jakarta.persistence.Entity.class)).isTrue();
+    }
 }

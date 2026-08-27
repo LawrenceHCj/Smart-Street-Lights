@@ -1,5 +1,7 @@
 package com.smartlamp.service;
 
+import com.smartlamp.agent.AgentCallContext;
+import com.smartlamp.agent.actions.ActionService;
 import com.smartlamp.agent.conversation.AgentConversation;
 import com.smartlamp.agent.conversation.AgentMessage;
 import com.smartlamp.agent.conversation.ConversationService;
@@ -34,6 +36,9 @@ public class AgentConversationService {
     @Autowired
     private ConversationSummarizer conversationSummarizer;
 
+    @Autowired
+    private ActionService actionService;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // 完整聊天流程（向后兼容：conversationId 为空时自动创建新会话）
@@ -55,8 +60,15 @@ public class AgentConversationService {
         conversationService.saveUserMessage(conversation.getConversationId(), text);
 
         // 3. 取最近历史（排除刚保存的当前用户消息）→ 调用现有 Agent（Summary + 历史 + 当前问题）
+        // 注入 conversationId 上下文：控制工具生成 Action 时记录来源会话（仅溯源，绝不替代 actionId 确认）
         List<AgentMessage> recentHistory = recentHistory(conversation.getConversationId());
-        AskResponse response = agentService.ask(text, recentHistory, conversation.getSummary());
+        AgentCallContext.setConversationId(conversation.getConversationId());
+        AskResponse response;
+        try {
+            response = agentService.ask(text, recentHistory, conversation.getSummary());
+        } finally {
+            AgentCallContext.clear();
+        }
 
         // 4. 保存 Assistant Message（metadata 存回答来源快照）
         conversationService.saveAssistantMessage(conversation.getConversationId(),
@@ -104,6 +116,8 @@ public class AgentConversationService {
     // 删除会话及其全部历史消息（校验归属；他人会话按"会话不存在"处理）
     public void deleteConversation(String conversationId, String userId) {
         requireOwnConversation(conversationId, userId);
+        // 安全处理（阶段30）：先取消该会话尚未确认的 Action，避免悬空的待确认操作
+        actionService.cancelPendingByConversation(conversationId);
         conversationService.deleteConversation(conversationId);
     }
 

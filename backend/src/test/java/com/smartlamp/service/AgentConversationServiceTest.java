@@ -1,5 +1,7 @@
 package com.smartlamp.service;
 
+import com.smartlamp.agent.AgentCallContext;
+import com.smartlamp.agent.actions.ActionService;
 import com.smartlamp.agent.conversation.AgentConversation;
 import com.smartlamp.agent.conversation.AgentMessage;
 import com.smartlamp.agent.conversation.ConversationService;
@@ -40,6 +42,9 @@ class AgentConversationServiceTest {
     @Mock
     private ConversationSummarizer conversationSummarizer;
 
+    @Mock
+    private ActionService actionService;
+
     private AgentConversationService service;
 
     @BeforeEach
@@ -48,6 +53,7 @@ class AgentConversationServiceTest {
         ReflectionTestUtils.setField(service, "conversationService", conversationService);
         ReflectionTestUtils.setField(service, "agentService", agentService);
         ReflectionTestUtils.setField(service, "conversationSummarizer", conversationSummarizer);
+        ReflectionTestUtils.setField(service, "actionService", actionService);
     }
 
     private AgentConversation conversation(String conversationId, String userId) {
@@ -310,5 +316,73 @@ class AgentConversationServiceTest {
                 .isInstanceOf(BadRequestException.class)
                 .hasMessageContaining("会话不存在");
         verify(conversationService, never()).deleteConversation(any());
+    }
+
+    // ============ 会话与 Action 的安全关系（阶段30） ============
+
+    @Test
+    void 删除会话时先取消其待确认Action() {
+        when(conversationService.getConversation("conv-1"))
+                .thenReturn(Optional.of(conversation("conv-1", "admin")));
+
+        service.deleteConversation("conv-1", "admin");
+
+        verify(actionService).cancelPendingByConversation("conv-1");
+        verify(conversationService).deleteConversation("conv-1");
+    }
+
+    @Test
+    void 删除他人会话不触发Action取消() {
+        when(conversationService.getConversation("conv-other"))
+                .thenReturn(Optional.of(conversation("conv-other", "other-user")));
+
+        assertThatThrownBy(() -> service.deleteConversation("conv-other", "admin"))
+                .isInstanceOf(BadRequestException.class);
+        verify(actionService, never()).cancelPendingByConversation(anyString());
+    }
+
+    @Test
+    void 聊天结束后清理会话上下文() {
+        AgentConversation created = conversation("conv-new", "admin");
+        when(conversationService.createConversation(anyString(), anyString())).thenReturn(created);
+        when(conversationService.listMessages("conv-new")).thenReturn(List.of());
+        when(agentService.ask(anyString(), anyList(), any()))
+                .thenReturn(new AskResponse("回答", List.of()));
+
+        service.chat("你好", null, "admin");
+
+        assertThat(AgentCallContext.getConversationId()).isNull();
+    }
+
+    // ============ 阶段31：历史对话完整测试补充 ============
+
+    @Test
+    void 删除会话后无法再获取旧消息() {
+        when(conversationService.getConversation("conv-1"))
+                .thenReturn(Optional.of(conversation("conv-1", "admin")))
+                .thenReturn(Optional.empty()); // 删除后会话不存在
+
+        service.deleteConversation("conv-1", "admin");
+
+        assertThatThrownBy(() -> service.getMessages("conv-1", "admin"))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("会话不存在");
+    }
+
+    @Test
+    void 助手消息metadata仅含来源快照不含密钥类信息() {
+        AgentConversation created = conversation("conv-new", "admin");
+        when(conversationService.createConversation(anyString(), anyString())).thenReturn(created);
+        when(conversationService.listMessages("conv-new")).thenReturn(List.of());
+        when(agentService.ask(anyString(), anyList(), any()))
+                .thenReturn(new AskResponse("回答", List.of(new SourceItem("设备离线排查", "knowledge", 2.0))));
+
+        service.chat("路灯离线怎么排查？", null, "admin");
+
+        org.mockito.ArgumentCaptor<String> captor = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(conversationService).saveAssistantMessage(eq("conv-new"), anyString(), captor.capture());
+        assertThat(captor.getValue())
+                .contains("设备离线排查") // 只有来源快照
+                .doesNotContain("apiKey").doesNotContain("token").doesNotContain("Authorization");
     }
 }

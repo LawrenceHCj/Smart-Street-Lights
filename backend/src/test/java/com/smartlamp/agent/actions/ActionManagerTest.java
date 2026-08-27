@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -94,11 +95,30 @@ class ActionManagerTest {
     }
 
     @Test
-    void 未开放操作创建直接拒绝() {
-        assertThatThrownBy(() -> manager.create(ActionType.UPDATE_LUX_THRESHOLD, "config", "system", Map.of("value", 30), "u"))
-                .isInstanceOf(ActionRejectedException.class).hasMessageContaining("未开放");
-        assertThatThrownBy(() -> manager.create(ActionType.UPDATE_AUTO_MODE, "config", "system", Map.of("enabled", false), "u"))
-                .isInstanceOf(ActionRejectedException.class).hasMessageContaining("未开放");
+    void 配置类操作创建进入待确认状态() {
+        AgentAction threshold = manager.create(ActionType.UPDATE_LUX_THRESHOLD, "config", "system", Map.of("value", 150), "u");
+        assertThat(threshold.getStatus()).isEqualTo(ActionStatus.PENDING_CONFIRMATION);
+        assertThat(threshold.getRiskLevel()).isEqualTo(ActionRisk.LOW_WRITE);
+        assertThat(threshold.getTargetType()).isEqualTo("config");
+
+        AgentAction auto = manager.create(ActionType.UPDATE_AUTO_MODE, "config", "system", Map.of("enabled", false), "u");
+        assertThat(auto.getStatus()).isEqualTo(ActionStatus.PENDING_CONFIRMATION);
+    }
+
+    @Test
+    void 阈值参数范围按后端规则10到500校验() {
+        assertThatThrownBy(() -> manager.create(ActionType.UPDATE_LUX_THRESHOLD, "config", "system", Map.of("value", 5), "u"))
+                .isInstanceOf(ActionRejectedException.class).hasMessageContaining("10-500");
+        assertThatThrownBy(() -> manager.create(ActionType.UPDATE_LUX_THRESHOLD, "config", "system", Map.of("value", 600), "u"))
+                .isInstanceOf(ActionRejectedException.class).hasMessageContaining("10-500");
+        assertThatThrownBy(() -> manager.create(ActionType.UPDATE_LUX_THRESHOLD, "config", "system", Map.of("value", "abc"), "u"))
+                .isInstanceOf(ActionRejectedException.class).hasMessageContaining("10-500");
+    }
+
+    @Test
+    void 自动模式参数必须布尔() {
+        assertThatThrownBy(() -> manager.create(ActionType.UPDATE_AUTO_MODE, "config", "system", Map.of("enabled", "yes"), "u"))
+                .isInstanceOf(ActionRejectedException.class).hasMessageContaining("enabled");
     }
 
     @Test
@@ -214,6 +234,55 @@ class ActionManagerTest {
                 .isEqualTo(ActionStatus.COMMAND_ACCEPTED);
         assertThat(manager.find(action.getActionId()).orElseThrow().getMessage())
                 .contains("尚未获得设备执行确认");
+    }
+
+    // ============ 会话删除时的安全处理（阶段30） ============
+
+    @Test
+    void 取消指定会话的全部待确认Action且不影响其他会话() {
+        AgentAction a1 = manager.create(ActionType.TURN_ON_LIGHT, "device", "lamp001", Map.of(), "u");
+        a1.setConversationId("conv-a");
+        AgentAction a2 = manager.create(ActionType.TURN_OFF_LIGHT, "device", "lamp002", Map.of(), "u");
+        a2.setConversationId("conv-a");
+        AgentAction b1 = manager.create(ActionType.TURN_ON_LIGHT, "device", "lamp003", Map.of(), "u");
+        b1.setConversationId("conv-b");
+
+        int count = manager.cancelPendingByConversation("conv-a");
+
+        assertThat(count).isEqualTo(2);
+        assertThat(manager.find(a1.getActionId()).orElseThrow().getStatus()).isEqualTo(ActionStatus.CANCELLED);
+        assertThat(manager.find(a2.getActionId()).orElseThrow().getStatus()).isEqualTo(ActionStatus.CANCELLED);
+        // 其他会话的待确认 Action 不受影响
+        assertThat(manager.find(b1.getActionId()).orElseThrow().getStatus()).isEqualTo(ActionStatus.PENDING_CONFIRMATION);
+    }
+
+    @Test
+    void 会话删除只取消待确认状态不影响已确认或终态() {
+        AgentAction pending = manager.create(ActionType.TURN_ON_LIGHT, "device", "lamp001", Map.of(), "u");
+        pending.setConversationId("conv-a");
+        AgentAction confirmed = manager.create(ActionType.TURN_OFF_LIGHT, "device", "lamp002", Map.of(), "u");
+        confirmed.setConversationId("conv-a");
+        manager.confirm(confirmed.getActionId());
+
+        int count = manager.cancelPendingByConversation("conv-a");
+
+        assertThat(count).isEqualTo(1);
+        assertThat(manager.find(pending.getActionId()).orElseThrow().getStatus()).isEqualTo(ActionStatus.CANCELLED);
+        assertThat(manager.find(confirmed.getActionId()).orElseThrow().getStatus()).isEqualTo(ActionStatus.CONFIRMED);
+    }
+
+    @Test
+    void 会话删除取消动作同样触发审计钩子() {
+        AtomicInteger audits = new AtomicInteger();
+        manager.setAuditHook(a -> audits.incrementAndGet());
+        AgentAction action = manager.create(ActionType.TURN_ON_LIGHT, "device", "lamp001", Map.of(), "u");
+        action.setConversationId("conv-a");
+
+        manager.cancelPendingByConversation("conv-a");
+
+        assertThat(audits).hasValue(1);
+        assertThat(action.getStatus()).isEqualTo(ActionStatus.CANCELLED);
+        assertThat(action.getMessage()).contains("会话已删除");
     }
 
     @Test
