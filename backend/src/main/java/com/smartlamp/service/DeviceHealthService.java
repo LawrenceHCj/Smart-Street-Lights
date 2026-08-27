@@ -24,6 +24,9 @@ import java.util.List;
 @Service
 public class DeviceHealthService {
 
+    /** 遥测数据超过该时长（毫秒）即视为陈旧，不应再据此评分。默认 10 分钟。 */
+    private static final long STALE_TELEMETRY_MS = 10L * 60 * 1000;
+
     @Autowired
     private DeviceHealthReportRepository healthReportRepository;
 
@@ -34,64 +37,89 @@ public class DeviceHealthService {
 
     /**
      * 核心算分逻辑：白盒规则引擎
+     *
+     * 业务约定：
+     * - 设备不存在：返回 null（由调用方决定如何回复客户端，避免在这里抛 500）。
+     * - 设备没有任何遥测数据：返回 null，不写入 100 分报告。
+     * - 遥测数据陈旧（超过 STALE_TELEMETRY_MS）：返回 null，不写入满分报告。
+     * - 数据库或序列化异常：原样向上抛出，由 GlobalExceptionHandler 统一返回 500，
+     *   不再吞掉异常伪装成成功。
      */
     public DeviceHealthReport evaluateDeviceHealth(Device device) {
-        int score = 100;
+        if (device == null) return null;
+
         ArrayNode anomalyDetails = objectMapper.createArrayNode();
 
-        try {
-            // 1. 精准匹配 Device.java 的 latest 系列字段
-            Double power = getSafeDouble(device.getLatestPower());
-            Double temperature = getSafeDouble(device.getLatestTemperature());
-            Double current = getSafeDouble(device.getLatestCurrent());
-            Double voltage = getSafeDouble(device.getLatestVoltage());
-            String lampStatus = device.getLampStatus();
+        // 1) 取值并判断数据可用性
+        Double power = getNullableDouble(device.getLatestPower());
+        Double temperature = getNullableDouble(device.getLatestTemperature());
+        Double current = getNullableDouble(device.getLatestCurrent());
+        Double voltage = getNullableDouble(device.getLatestVoltage());
+        String lampStatus = device.getLampStatus();
 
-            // 规则 1：继电器或状态回传异常
-            if (power > 0.5 && "OFF".equalsIgnoreCase(lampStatus)) {
-                score -= 15;
-                addAnomaly(anomalyDetails, "继电器/状态回传异常", "功率不为零(" + power + "W)但系统状态为OFF", 15);
-            }
-
-            // 规则 2：过热预警
-            if (temperature > 65.0) {
-                score -= 10;
-                addAnomaly(anomalyDetails, "过热预警", "当前温度(" + temperature + "℃)超过安全阈值", 10);
-            }
-
-            // 规则 3：疑似驱动老化
-            if (current > 5.0) {
-                score -= 10;
-                addAnomaly(anomalyDetails, "疑似驱动老化", "工作电流(" + current + "A)异常偏高", 10);
-            }
-
-            // 规则 4：供电质量异常 (偏离标准 220V 市电范围)
-            if (voltage > 0 && (voltage < 200.0 || voltage > 240.0)) {
-                score -= 10;
-                addAnomaly(anomalyDetails, "供电质量异常", "当前电压(" + voltage + "V)偏离标准范围", 10);
-            }
-
-            score = Math.max(0, score);
-
-            // 2. 组装最终体检报告
-            DeviceHealthReport report = new DeviceHealthReport();
-            report.setDeviceCode(device.getCode());
-            report.setHealthScore(score);
-            report.setAnomalyDetails(anomalyDetails.toString());
-            report.setCreatedAt(LocalDateTime.now());
-
-            // 3. 落库保存并返回
-            return healthReportRepository.save(report);
-
-        } catch (Exception e) {
-            log.error("设备 {} 健康评估执行崩溃，原因: {}", device.getCode(), e.getMessage());
+        // 1.1 遥测是否完全缺失？
+        boolean allTelemetryMissing =
+                power == null && temperature == null && current == null && voltage == null;
+        if (allTelemetryMissing) {
+            // 仅心跳、无任何电气数据：明确"数据不足"，不写满分报告。
+            log.debug("设备 {} 无任何遥测数据，跳过评分（不写入满分报告）", device.getCode());
             return null;
         }
+
+        // 1.2 遥测是否陈旧？陈旧数据不应被当作刚采集，更不应据此得出满分。
+        long now = System.currentTimeMillis();
+        Long lastTelemetryAt = device.getLastTelemetryAt();
+        if (lastTelemetryAt != null && (now - lastTelemetryAt) > STALE_TELEMETRY_MS) {
+            log.debug("设备 {} 遥测已陈旧（lastTelemetryAt={}），跳过评分", device.getCode(), lastTelemetryAt);
+            return null;
+        }
+
+        // 2) 评分（不存在的指标不扣分，也不当作 0 处理）
+        int score = 100;
+
+        // 规则 1：继电器或状态回传异常（需要 power 与 lampStatus 都存在）
+        if (power != null && power > 0.5 && "OFF".equalsIgnoreCase(lampStatus)) {
+            score -= 15;
+            addAnomaly(anomalyDetails, "继电器/状态回传异常",
+                    "功率不为零(" + power + "W)但系统状态为OFF", 15);
+        }
+
+        // 规则 2：过热预警
+        if (temperature != null && temperature > 65.0) {
+            score -= 10;
+            addAnomaly(anomalyDetails, "过热预警",
+                    "当前温度(" + temperature + "℃)超过安全阈值", 10);
+        }
+
+        // 规则 3：疑似驱动老化
+        if (current != null && current > 5.0) {
+            score -= 10;
+            addAnomaly(anomalyDetails, "疑似驱动老化",
+                    "工作电流(" + current + "A)异常偏高", 10);
+        }
+
+        // 规则 4：供电质量异常（偏离标准 220V 市电范围）
+        if (voltage != null && voltage > 0 && (voltage < 200.0 || voltage > 240.0)) {
+            score -= 10;
+            addAnomaly(anomalyDetails, "供电质量异常",
+                    "当前电压(" + voltage + "V)偏离标准范围", 10);
+        }
+
+        score = Math.max(0, score);
+
+        // 3) 组装并落库（任何异常向上抛，交给 GlobalExceptionHandler）
+        DeviceHealthReport report = new DeviceHealthReport();
+        report.setDeviceCode(device.getCode());
+        report.setHealthScore(score);
+        report.setAnomalyDetails(anomalyDetails.toString());
+        report.setCreatedAt(LocalDateTime.now());
+        return healthReportRepository.save(report);
     }
 
     public DeviceHealthDTO evaluateDeviceHealth(String deviceCode) {
         Device device = deviceRepository.findByCode(deviceCode).orElse(null);
-        return device == null ? null : toDTO(evaluateDeviceHealth(device));
+        if (device == null) return null;
+        return toDTO(evaluateDeviceHealth(device));
     }
 
     public List<DeviceHealthDTO> getLatestReports() {
@@ -131,6 +159,7 @@ public class DeviceHealthService {
                 ));
             }
         } catch (Exception e) {
+            // 解析历史报告的异常详情失败，仅记录，不应让整个查询返回 500。
             log.warn("健康报告异常详情解析失败: {}", e.getMessage());
         }
         return anomalies;
@@ -144,13 +173,18 @@ public class DeviceHealthService {
         array.add(node);
     }
 
-    private Double getSafeDouble(Object value) {
-        if (value == null) return 0.0;
-        if (value instanceof Number) return ((Number) value).doubleValue();
+    /** 缺失/null 不再被转换为 0，而是返回 null，避免把"无数据"误判为"零值正常"。 */
+    private Double getNullableDouble(Object value) {
+        if (value == null) return null;
+        if (value instanceof Number) {
+            double d = ((Number) value).doubleValue();
+            return Double.isFinite(d) ? d : null;
+        }
         try {
-            return Double.parseDouble(value.toString());
+            double d = Double.parseDouble(value.toString());
+            return Double.isFinite(d) ? d : null;
         } catch (NumberFormatException e) {
-            return 0.0;
+            return null;
         }
     }
 }

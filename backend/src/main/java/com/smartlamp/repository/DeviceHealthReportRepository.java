@@ -2,9 +2,13 @@ package com.smartlamp.repository;
 
 import com.smartlamp.entity.DeviceHealthReport;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Repository
@@ -22,4 +26,13 @@ public interface DeviceHealthReportRepository extends JpaRepository<DeviceHealth
     List<DeviceHealthReport> findLatestForAllDevices();
 
     void deleteByDeviceCode(String deviceCode);
+
+    /**
+     * 按创建时间清理过期报告，避免健康报告表无限增长。
+     * 配合巡检降频后，可保留 N 天的报告用于历史展示。
+     */
+    @Modifying
+    @Transactional
+    @Query("DELETE FROM DeviceHealthReport r WHERE r.createdAt < :before")
+    int deleteOlderThan(@Param("before") LocalDateTime before);
 }

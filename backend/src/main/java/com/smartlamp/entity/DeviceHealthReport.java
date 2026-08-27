@@ -9,7 +9,13 @@ import java.time.LocalDateTime;
  */
 @Data
 @Entity
-@Table(name = "device_health_report")
+@Table(
+        name = "device_health_report",
+        indexes = {
+                // 解决 findTop30ByDeviceCodeOrderByCreatedAtDesc 与 findLatestForAllDevices 的查询性能问题。
+                @Index(name = "idx_health_device_created", columnList = "device_code, created_at")
+        }
+)
 public class DeviceHealthReport {
 
     @Id
