@@ -12,9 +12,28 @@ export interface LinkageConfig {
   hysteresis: number
 }
 
-/** 手动远程开关灯 F-06：POST /api/devices/{deviceId}/switch */
-export function switchLight(deviceId: string, on: boolean): Promise<null> {
+/** 手动开关命令状态（后端 CommandStatus 枚举） */
+export type CommandStatus = 'DISPATCHED' | 'ACKED' | 'SUCCESS' | 'FAILED' | 'TIMEOUT'
+
+/** 控制命令结果（后端 ControlResultDTO）：DISPATCHED=已发送 ACKED=设备已接收 SUCCESS=执行成功 FAILED=执行失败 TIMEOUT=等待超时 */
+export interface ControlResult {
+  commandId: string
+  deviceId: string
+  action: 'ON' | 'OFF'
+  mode: string
+  status: CommandStatus
+  issuedAt: number | null
+  message: string | null
+}
+
+/** 手动远程开关灯 F-06：POST /api/devices/{deviceId}/switch，返回命令 ID 与初始状态 */
+export function switchLight(deviceId: string, on: boolean): Promise<ControlResult> {
   return request.post(`/devices/${deviceId}/switch`, { on }, { silent: true })
+}
+
+/** 查询命令执行状态：GET /api/devices/commands/{commandId}（前端轮询命令流转用） */
+export function getCommandStatus(commandId: string): Promise<ControlResult> {
+  return request.get(`/devices/commands/${commandId}`, { silent: true })
 }
 
 /** 查询联动与阈值配置 F-05/F-07：GET /api/config/linkage */

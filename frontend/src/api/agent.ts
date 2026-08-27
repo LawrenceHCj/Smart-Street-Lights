@@ -33,8 +33,9 @@ export interface AgentMessage {
 }
 
 /** 智能问答：POST /api/agent/ask，conversationId 为空时后端自动新建会话 */
+// 智能体回答可能触发多轮工具调用，单独放宽超时至 90s（3 轮 × 30s），不受全局 10s 限制。
 export function ask(question: string, conversationId?: string): Promise<AskResponse> {
-  return request.post('/agent/ask', { question, conversationId })
+  return request.post('/agent/ask', { question, conversationId }, { timeout: 90000 })
 }
 
 /** 会话列表：GET /api/assistant/conversations（按最近更新倒序） */

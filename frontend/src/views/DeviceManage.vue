@@ -27,7 +27,11 @@
         <div class="panel-meta">{{ devices.length }} 台设备</div>
       </div>
       <div class="table-wrap">
-        <el-table :data="devices">
+        <div class="device-search">
+          <el-input v-model="deviceQuery" placeholder="查找设备编号或位置" clearable :prefix-icon="Search" style="width: 250px" />
+          <span v-if="deviceQuery.trim()" class="search-hits">匹配 {{ filteredDevices.length }} 台</span>
+        </div>
+        <el-table :data="filteredDevices">
           <el-table-column label="设备" min-width="200">
             <template #default="{ row }">
               <div class="device-cell">
@@ -153,17 +157,36 @@
           <section class="report-section" aria-labelledby="history-title">
             <div class="report-section-head">
               <div>
-                <div class="section-kicker">最近 30 次</div>
-                <h2 id="history-title">评分记录</h2>
+                <div class="section-kicker">近一周 · 每 4 小时</div>
+                <h2 id="history-title">检测记录</h2>
               </div>
+              <span class="anomaly-count num">{{ filteredHealthHistory.length }} 条</span>
+            </div>
+            <div class="history-filter">
+              <el-date-picker
+                v-model="histRange"
+                type="datetimerange"
+                range-separator="至"
+                start-placeholder="开始时间"
+                end-placeholder="结束时间"
+                :disabled-date="disableFutureDate"
+                :default-time="histDefaultTime"
+                size="small"
+                style="width: 340px"
+              />
+              <el-button size="small" type="primary" @click="applyHistRange">查询</el-button>
+              <el-button v-if="histApplied" size="small" text @click="resetHistRange">重置</el-button>
             </div>
             <ol class="history-list">
-              <li v-for="report in healthHistory.slice(0, 8)" :key="report.id ?? report.createdAt">
+              <li v-for="report in filteredHealthHistory" :key="report.id ?? report.createdAt">
                 <span class="num">{{ reportTime(report.createdAt) }}</span>
                 <span class="history-grade" :class="healthTone(report.healthScore)">{{ healthLabel(report.healthScore) }}</span>
                 <strong class="num">{{ report.healthScore }}</strong>
               </li>
             </ol>
+            <div v-if="!filteredHealthHistory.length" class="history-empty">
+              {{ histApplied ? '该时间段内暂无检测记录' : '暂无检测记录' }}
+            </div>
           </section>
         </template>
 
@@ -210,8 +233,8 @@
 
 <script setup lang="ts">
 import { computed, ref, reactive, onMounted } from 'vue'
-import { CircleCheck, DataAnalysis, Loading, Plus, ReadingLamp, Refresh, Warning } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { CircleCheck, DataAnalysis, Loading, Plus, ReadingLamp, Refresh, Search, Warning } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox, ElDatePicker } from 'element-plus'
 import {
   evaluateDeviceHealth,
   getDeviceHealthHistory,
@@ -224,6 +247,15 @@ import { probe } from '../api/helper'
 import NotReadyBanner from '../components/NotReadyBanner.vue'
 
 const devices = ref<DeviceVO[]>([])
+// 设备查找栏：按设备编号或位置实时过滤
+const deviceQuery = ref('')
+const filteredDevices = computed(() => {
+  const q = deviceQuery.value.trim().toLowerCase()
+  if (!q) return devices.value
+  return devices.value.filter(
+    (d) => (d.code || '').toLowerCase().includes(q) || (d.location || '').toLowerCase().includes(q),
+  )
+})
 const ready = ref(true)
 const addVisible = ref(false)
 const adding = ref(false)
@@ -235,6 +267,52 @@ const healthDetailError = ref(false)
 const evaluating = ref(false)
 const selectedCode = ref('')
 const healthHistory = ref<DeviceHealthReport[]>([])
+
+// 检测记录展示：默认只显示近一周，按 4 小时窗口聚合（每 4 小时显示一条），支持按时间范围检索
+const DAY = 24 * 3600 * 1000
+const FOUR_HOUR = 4 * 3600 * 1000
+// datetimerange 默认时间：开始 00:00、结束 23:59:59，避免选「当天」时结束时间落到 00:00
+const histDefaultTime: [Date, Date] = [new Date(2000, 1, 1, 0, 0, 0), new Date(2000, 1, 1, 23, 59, 59)]
+const histRange = ref<[Date, Date] | null>(null)
+const histApplied = ref(false)
+function disableFutureDate(d: Date) {
+  return d.getTime() > Date.now()
+}
+function applyHistRange() {
+  if (!histRange.value?.[0] || !histRange.value?.[1]) {
+    ElMessage.warning('请选择时间范围')
+    return
+  }
+  if (histRange.value[1].getTime() <= histRange.value[0].getTime()) {
+    ElMessage.warning('结束时间需晚于开始时间')
+    return
+  }
+  histApplied.value = true
+}
+function resetHistRange() {
+  histApplied.value = false
+}
+// 时间范围过滤 + 4 小时聚合：healthHistory 已按时间倒序（后端 top-30 倒序），每个 4 小时窗口保留最新一条
+const filteredHealthHistory = computed(() => {
+  let list = healthHistory.value
+  if (histApplied.value && histRange.value?.[0] && histRange.value?.[1]) {
+    const start = histRange.value[0].getTime()
+    const end = histRange.value[1].getTime()
+    list = list.filter((r) => {
+      const t = new Date(r.createdAt).getTime()
+      return !Number.isNaN(t) && t >= start && t <= end
+    })
+  }
+  const buckets = new Map<number, DeviceHealthReport>()
+  for (const r of list) {
+    const t = new Date(r.createdAt).getTime()
+    if (Number.isNaN(t)) continue
+    const key = Math.floor(t / FOUR_HOUR)
+    if (!buckets.has(key)) buckets.set(key, r)
+  }
+  return Array.from(buckets.values())
+})
+
 const form = reactive<{ code: string; location: string; longitude?: number; latitude?: number }>({ code: '', location: '' })
 
 const selectedReport = computed(() => healthHistory.value[0] ?? healthByDevice.value[selectedCode.value] ?? null)
@@ -293,6 +371,10 @@ async function openHealth(row: DeviceVO) {
   healthLoading.value = true
   healthDetailError.value = false
   healthHistory.value = []
+  // 默认检索范围：近一周
+  const now = Date.now()
+  histRange.value = [new Date(now - 7 * DAY), new Date(now)]
+  histApplied.value = true
   try {
     healthHistory.value = await getDeviceHealthHistory(row.code, { silent: true })
   } catch {
@@ -406,6 +488,19 @@ onMounted(() => {
 
 .table-wrap {
   padding: 6px 16px 16px;
+}
+.device-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0 12px;
+}
+.device-search .el-input {
+  width: 250px;
+}
+.search-hits {
+  font-size: 12px;
+  color: var(--text-muted);
 }
 .device-cell {
   display: flex;
@@ -544,6 +639,9 @@ onMounted(() => {
 .history-list li { min-height: 38px; display: grid; grid-template-columns: 1fr auto 34px; align-items: center; gap: 12px; border-top: 1px solid var(--border-subtle); color: var(--text-muted); font-size: 11.5px; }
 .history-list strong { color: var(--text-primary); text-align: right; }
 .history-grade { min-width: 42px; padding: 2px 6px; text-align: center; }
+.history-filter { margin-top: 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.history-filter :deep(.el-date-editor--datetimerange) { --el-fill-color-light: var(--bg-surface-2); }
+.history-empty { margin-top: 14px; padding: 14px; text-align: center; color: var(--text-muted); font-size: 12px; background: var(--bg-surface-2); }
 .drawer-actions { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .drawer-actions > span { color: var(--text-muted); font-size: 11.5px; }
 .drawer-actions :deep(.el-button--primary) {

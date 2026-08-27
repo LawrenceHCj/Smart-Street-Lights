@@ -11,6 +11,12 @@
       </div>
     </div>
 
+    <!-- 市政人员只读提示（用 section 避免干扰 .control 网格里 div 的 nth-of-type 计数） -->
+    <section v-if="isMunicipal" class="readonly-note" role="note">
+      <el-icon class="readonly-icon"><Lock /></el-icon>
+      <span>当前为市政人员只读权限：可查看设备状态与联动配置，无法开关灯或修改配置。</span>
+    </section>
+
     <!-- F-05 / F-07 光照联动与阈值 -->
     <div class="panel">
       <div class="panel-head">
@@ -27,7 +33,7 @@
             <div class="cfg-title">自动联动开关</div>
             <div class="cfg-desc">开启后，低于开灯阈值自动点亮；达到关灯阈值才关闭，避免临界照度反复开关。</div>
           </div>
-          <el-switch v-model="linkage.enabled" :disabled="!linkageReady" />
+          <el-switch v-model="linkage.enabled" :disabled="!linkageReady || isMunicipal" />
         </div>
         <div class="cfg-row">
           <div class="cfg-main">
@@ -39,7 +45,7 @@
             :min="0"
             :max="10000"
             :step="5"
-            :disabled="!linkageReady"
+            :disabled="!linkageReady || isMunicipal"
           />
           <span class="cfg-unit">Lux</span>
         </div>
@@ -53,12 +59,12 @@
             :min="1"
             :max="1000"
             :step="10"
-            :disabled="!linkageReady"
+            :disabled="!linkageReady || isMunicipal"
           />
           <span class="cfg-unit">Lux</span>
         </div>
         <div class="cfg-actions">
-          <el-button type="primary" :loading="saving" :disabled="!linkageReady" @click="saveLinkage">
+          <el-button type="primary" :loading="saving" :disabled="!linkageReady || isMunicipal" @click="saveLinkage">
             保存配置
           </el-button>
         </div>
@@ -76,7 +82,11 @@
         text="开关灯接口尚未由后端实现（约定 POST /api/devices/{deviceId}/switch），开关状态仅在本地会话内模拟。"
       />
       <div class="table-wrap">
-        <el-table :data="devices">
+        <div class="device-search">
+          <el-input v-model="deviceQuery" placeholder="查找设备编号或位置" clearable :prefix-icon="Search" style="width: 250px" />
+          <span v-if="deviceQuery.trim()" class="search-hits">匹配 {{ filteredDevices.length }} 台</span>
+        </div>
+        <el-table :data="filteredDevices">
           <el-table-column label="设备" min-width="200">
             <template #default="{ row }">
               <div class="device-cell">
@@ -106,11 +116,20 @@
               <span v-if="row.latestLux != null" class="lux-unit">Lux</span>
             </template>
           </el-table-column>
+          <el-table-column label="命令状态" width="140">
+            <template #default="{ row }">
+              <span v-if="row.status !== 'ONLINE'" class="cmd-pill locked">离线锁定</span>
+              <span v-else-if="!commandStates[row.code]" class="cmd-pill idle">—</span>
+              <span v-else class="cmd-pill" :class="cmdClass(commandStates[row.code]?.status)">
+                <span class="cmd-dot"></span>{{ cmdLabel(commandStates[row.code]?.status) }}
+              </span>
+            </template>
+          </el-table-column>
           <el-table-column label="路灯开关" width="130" align="right" fixed="right">
             <template #default="{ row }">
               <el-switch
-                :model-value="switchState[row.code] ?? true"
-                :disabled="!switchReady || switching"
+                :model-value="row.status === 'ONLINE' ? (switchState[row.code] ?? true) : false"
+                :disabled="!switchReady || row.status !== 'ONLINE' || inFlight(row.code) || isMunicipal"
                 inline-prompt
                 active-text="开"
                 inactive-text="关"
@@ -125,30 +144,95 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
-import { ReadingLamp } from '@element-plus/icons-vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount } from 'vue'
+import { Lock, ReadingLamp, Search } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { listDevices } from '../api/device'
 import type { DeviceVO } from '../api/device'
-import { getLinkageConfig, saveLinkageConfig, switchLight } from '../api/control'
-import type { LinkageConfig } from '../api/control'
+import { getLinkageConfig, saveLinkageConfig, switchLight, getCommandStatus } from '../api/control'
+import type { LinkageConfig, ControlResult, CommandStatus } from '../api/control'
 import { probe } from '../api/helper'
+import { getCurrentRole } from '../utils/auth'
 import NotReadyBanner from '../components/NotReadyBanner.vue'
 
+// 角色标识：市政人员只读，禁止开关灯与修改联动配置
+const isMunicipal = getCurrentRole() === 'municipal'
+
 const devices = ref<DeviceVO[]>([])
-// 本地开关状态：后端无开关态接口，先按设备编号维护会话内状态，默认开
+// 设备查找栏：按设备编号或位置实时过滤
+const deviceQuery = ref('')
+const filteredDevices = computed(() => {
+  const q = deviceQuery.value.trim().toLowerCase()
+  if (!q) return devices.value
+  return devices.value.filter(
+    (d) => (d.code || '').toLowerCase().includes(q) || (d.location || '').toLowerCase().includes(q),
+  )
+})
+// 本地开关状态：离线设备固定为关；在线设备仅在执行成功后更新
 const switchState = reactive<Record<string, boolean>>({})
 const linkage = ref<LinkageConfig>({ enabled: false, threshold: 100, hysteresis: 50 })
 const linkageReady = ref(true)
 const switchReady = ref(true)
 const saving = ref(false)
-const switching = ref(false)
+
+// 每台设备最近一次开关命令的阶段反馈
+type CmdDisplay = 'SENDING' | CommandStatus
+interface DeviceCommandState {
+  status: CmdDisplay
+  on: boolean
+  message: string
+}
+const commandStates = reactive<Record<string, DeviceCommandState | undefined>>({})
+const pollTimers = new Map<string, number>()
+const guardTimers = new Map<string, number>()
+
+const CMD_LABEL: Record<CmdDisplay, string> = {
+  SENDING: '发送中',
+  DISPATCHED: '已发送',
+  ACKED: '设备已接收',
+  SUCCESS: '执行成功',
+  FAILED: '执行失败',
+  TIMEOUT: '等待超时',
+}
+const CMD_CLASS: Record<CmdDisplay, string> = {
+  SENDING: 'sending',
+  DISPATCHED: 'dispatched',
+  ACKED: 'acked',
+  SUCCESS: 'success',
+  FAILED: 'failed',
+  TIMEOUT: 'timeout',
+}
+
+function cmdLabel(status?: CmdDisplay): string {
+  return status ? CMD_LABEL[status] : '—'
+}
+function cmdClass(status?: CmdDisplay): string {
+  return status ? CMD_CLASS[status] : 'idle'
+}
+/** 命令是否仍在流转（期间锁定开关防止重复下发） */
+function inFlight(code: string): boolean {
+  const s = commandStates[code]?.status
+  return s === 'SENDING' || s === 'DISPATCHED' || s === 'ACKED'
+}
+function clearCommandTimers(code: string) {
+  const it = pollTimers.get(code)
+  if (it !== undefined) {
+    window.clearInterval(it)
+    pollTimers.delete(code)
+  }
+  const gt = guardTimers.get(code)
+  if (gt !== undefined) {
+    window.clearTimeout(gt)
+    guardTimers.delete(code)
+  }
+}
 
 async function loadDevices() {
   try {
     devices.value = await listDevices()
     for (const d of devices.value) {
-      if (switchState[d.code] === undefined) switchState[d.code] = true
+      // 离线设备默认关；在线设备默认开
+      switchState[d.code] = d.status === 'ONLINE'
     }
   } catch {
     // 拦截器已统一提示
@@ -162,6 +246,7 @@ async function loadLinkage() {
 }
 
 async function saveLinkage() {
+  if (isMunicipal) return
   saving.value = true
   try {
     const r = await probe(saveLinkageConfig({ ...linkage.value }), null)
@@ -176,24 +261,71 @@ async function saveLinkage() {
 }
 
 async function doSwitch(row: DeviceVO, on: boolean) {
-  switching.value = true
-  try {
-    const r = await probe(switchLight(row.code, on), null)
-    if (r.ready) {
-      switchState[row.code] = on // 受控开关：更新本地状态跟随视觉
-      ElMessage.success(`${row.code} 已${on ? '开灯' : '关灯'}`)
-    } else {
-      switchReady.value = false
-      switchState[row.code] = !on // 失败回退，恢复原状态
-    }
-  } finally {
-    switching.value = false
+  if (isMunicipal) return
+  const code = row.code
+  clearCommandTimers(code)
+  const prev = switchState[code] ?? row.status === 'ONLINE'
+  commandStates[code] = { status: 'SENDING', on, message: '正在发送控制命令…' }
+  const r = await probe(switchLight(code, on), null)
+  if (!r.ready || !r.data?.commandId) {
+    commandStates[code] = { status: 'FAILED', on, message: '命令发送失败，请检查后端服务' }
+    switchState[code] = prev
+    ElMessage.error(`${code} 命令发送失败`)
+    return
   }
+  applyCommandResult(code, r.data)
+}
+
+/** 应用一次命令状态快照：终态时停止轮询并提示，非终态继续轮询 */
+function applyCommandResult(code: string, res: ControlResult) {
+  const on = commandStates[code]?.on ?? res.action === 'ON'
+  commandStates[code] = { status: res.status, on, message: res.message ?? '' }
+  if (res.status === 'SUCCESS') {
+    switchState[code] = on // 设备已确认执行，才翻转开关视觉
+    clearCommandTimers(code)
+    ElMessage.success(`${code} ${on ? '已开灯' : '已关灯'} · 执行成功`)
+  } else if (res.status === 'FAILED') {
+    clearCommandTimers(code)
+    ElMessage.error(`${code} 执行失败`)
+  } else if (res.status === 'TIMEOUT') {
+    clearCommandTimers(code)
+    ElMessage.warning(`${code} 等待设备回执超时`)
+  } else {
+    // DISPATCHED / ACKED：轮询直到终态
+    startPolling(code, res.commandId)
+  }
+}
+
+function startPolling(code: string, commandId: string) {
+  clearCommandTimers(code)
+  const interval = window.setInterval(async () => {
+    const r = await probe(getCommandStatus(commandId), null)
+    if (r.ready && r.data) applyCommandResult(code, r.data)
+    // 查询失败静默重试下一轮
+  }, 2000)
+  pollTimers.set(code, interval)
+  // 兜底：后端 60s 超时 + 最多 30s 延迟标记，前端最多等待 65s
+  const guard = window.setTimeout(() => {
+    const cur = commandStates[code]
+    if (cur && (cur.status === 'DISPATCHED' || cur.status === 'ACKED')) {
+      commandStates[code] = { ...cur, status: 'TIMEOUT', message: '等待设备回执超时' }
+      clearCommandTimers(code)
+      ElMessage.warning(`${code} 等待设备回执超时`)
+    }
+  }, 65000)
+  guardTimers.set(code, guard)
 }
 
 onMounted(() => {
   loadDevices()
   loadLinkage()
+})
+
+onBeforeUnmount(() => {
+  for (const it of pollTimers.values()) window.clearInterval(it)
+  for (const gt of guardTimers.values()) window.clearTimeout(gt)
+  pollTimers.clear()
+  guardTimers.clear()
 })
 </script>
 
@@ -229,6 +361,9 @@ onMounted(() => {
   font-size: 12.5px;
   color: var(--text-secondary);
 }
+/* 市政人员只读提示条（整页禁写） */
+.readonly-note { grid-column: 1 / -1; flex: 1 0 100%; display: flex; align-items: center; gap: 8px; padding: 9px 16px; margin-bottom: 18px; font-size: 12.5px; color: var(--accent-bright); background: var(--accent-dim); border: 1px solid rgba(250,152,25,.24); border-radius: var(--radius-md); }
+.readonly-icon { font-size: 14px; flex: none; }
 .panel { position: relative; overflow: hidden; border-radius: var(--radius-lg); }
 .panel-head { min-height: 56px; }
 
@@ -277,6 +412,19 @@ onMounted(() => {
 .table-wrap {
   padding: 8px 18px 18px;
 }
+.device-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0 12px;
+}
+.device-search .el-input {
+  width: 250px;
+}
+.search-hits {
+  font-size: 12px;
+  color: var(--text-muted);
+}
 .device-cell {
   display: flex;
   align-items: center;
@@ -321,6 +469,33 @@ onMounted(() => {
   color: var(--text-muted);
 }
 
+.cmd-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 550;
+  line-height: 1.5;
+  background: var(--bg-surface-2);
+  color: var(--text-secondary);
+}
+.cmd-pill .cmd-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.cmd-pill.sending { color: var(--text-muted); }
+.cmd-pill.dispatched { color: var(--info); }
+.cmd-pill.acked { color: var(--accent); }
+.cmd-pill.success { color: var(--ok); }
+.cmd-pill.failed { color: var(--danger); }
+.cmd-pill.timeout { color: var(--warn); }
+.cmd-pill.idle { color: var(--text-muted); }
+.cmd-pill.locked { color: var(--text-muted); }
+
 @media (max-width: 560px) {
   .page-intro {
     flex-direction: column;
@@ -342,7 +517,7 @@ onMounted(() => {
 .control > .panel:nth-of-type(1) .panel-meta, .control > .panel:nth-of-type(1) .cfg-desc { color: #91aaa1; }
 .control > .panel:nth-of-type(2) { border-left: 0; }
 .control .cfg-row { min-height: 118px; padding: 24px; border-color: rgba(255,255,255,.11); }
-.control .cfg-title { color: var(--signal); }
+.control .cfg-title { color: #000; }
 .control .cfg-actions { padding: 20px 24px; }
 @media (max-width: 980px) { .control { display: flex; align-items: stretch; } .control > .panel { width: 100%; min-height: auto; } .control > .panel:nth-of-type(2) { border-top: 0; border-left: 1px solid var(--border-subtle); } }
 </style>

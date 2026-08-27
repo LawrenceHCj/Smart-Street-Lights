@@ -21,7 +21,7 @@
         <div class="panel-meta">{{ users.length }} 个账号</div>
       </div>
       <div class="table-wrap">
-        <el-table :data="users">
+        <el-table :data="pagedUsers">
           <el-table-column label="用户名" min-width="160">
             <template #default="{ row }">
               <div class="user-cell">
@@ -74,6 +74,17 @@
             </div>
           </template>
         </el-table>
+        <div v-if="users.length" class="pager">
+          <el-pagination
+            :current-page="page"
+            :page-size="pageSize"
+            :total="users.length"
+            :page-sizes="[10, 20, 50]"
+            layout="total, sizes, prev, pager, next"
+            @current-change="onPage"
+            @size-change="onSize"
+          />
+        </div>
       </div>
     </div>
 
@@ -100,9 +111,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { User, Plus } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, ElPagination } from 'element-plus'
 import { listUsers, createUser, updateUserRole, deleteUser } from '../api/user'
 import type { UserVO, UserRole } from '../api/user'
 import { probe } from '../api/helper'
@@ -113,6 +124,26 @@ const ready = ref(true)
 const addVisible = ref(false)
 const adding = ref(false)
 const form = reactive({ username: '', password: '', role: 'operator' as UserRole })
+
+// 客户端分页：用户列表分页展示
+const page = ref(1)
+const pageSize = ref(10)
+const pagedUsers = computed(() => {
+  const start = (page.value - 1) * pageSize.value
+  return users.value.slice(start, start + pageSize.value)
+})
+function onPage(p: number) {
+  page.value = p
+}
+function onSize(s: number) {
+  pageSize.value = s
+  page.value = 1
+}
+// 删除/刷新后若页码越界则回退到最后一页
+watch(users, (u) => {
+  const maxPage = Math.max(1, Math.ceil(u.length / pageSize.value))
+  if (page.value > maxPage) page.value = maxPage
+})
 
 const roleOptions: Array<{ value: UserRole; label: string }> = [
   { value: 'admin', label: '管理员' },
@@ -227,6 +258,11 @@ onMounted(load)
 
 .table-wrap {
   padding: 6px 16px 16px;
+}
+.pager {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 12px;
 }
 .user-cell {
   display: flex;
