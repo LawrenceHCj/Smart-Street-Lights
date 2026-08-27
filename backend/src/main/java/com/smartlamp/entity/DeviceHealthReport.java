@@ -29,6 +29,10 @@ public class DeviceHealthReport {
     @Column(name = "anomaly_details", columnDefinition = "TEXT")
     private String anomalyDetails;
 
+    // 生成评分时使用的采集数据快照，确保历史报告可追溯。
+    @Column(name = "telemetry_snapshot", columnDefinition = "TEXT")
+    private String telemetrySnapshot;
+
     // 本次体检报告的生成时间
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;

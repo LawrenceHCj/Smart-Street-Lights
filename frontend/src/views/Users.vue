@@ -35,7 +35,7 @@
               <el-select
                 :model-value="row.role"
                 size="small"
-                :disabled="!ready || row.role === 'admin'"
+                :disabled="!ready || !canManage(row)"
                 @change="(v: UserRole) => onChangeRole(row, v)"
               >
                 <el-option v-for="r in roleOptions" :key="r.value" :label="r.label" :value="r.value" />
@@ -61,7 +61,7 @@
                 size="small"
                 text
                 type="danger"
-                :disabled="!ready || row.role === 'admin'"
+                :disabled="!ready || !canManage(row)"
                 @click="onDelete(row)"
               >
                 删除
@@ -117,6 +117,7 @@ import { ElMessage, ElMessageBox, ElPagination } from 'element-plus'
 import { listUsers, createUser, updateUserRole, deleteUser } from '../api/user'
 import type { UserVO, UserRole } from '../api/user'
 import { probe } from '../api/helper'
+import { getCurrentUsername } from '../utils/auth'
 import NotReadyBanner from '../components/NotReadyBanner.vue'
 
 const users = ref<UserVO[]>([])
@@ -151,6 +152,10 @@ const roleOptions: Array<{ value: UserRole; label: string }> = [
   { value: 'operator', label: '运维人员' },
 ]
 const roleLabel = (r: UserRole) => roleOptions.find((o) => o.value === r)?.label ?? r
+const currentUsername = getCurrentUsername()
+const canManage = (user: UserVO) => user.username !== 'admin' && user.username !== currentUsername
+const errorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error && error.message ? error.message : fallback
 
 const pad = (n: number) => String(n).padStart(2, '0')
 function time(ts: number) {
@@ -178,14 +183,12 @@ async function submitAdd() {
   }
   adding.value = true
   try {
-    const r = await probe(createUser({ username: form.username.trim(), password: form.password, role: form.role }), null)
-    if (r.ready) {
-      addVisible.value = false
-      ElMessage.success(`用户 ${form.username.trim()} 已添加`)
-      await load()
-    } else {
-      ready.value = false
-    }
+    await createUser({ username: form.username.trim(), password: form.password, role: form.role })
+    addVisible.value = false
+    ElMessage.success(`用户 ${form.username.trim()} 已添加`)
+    await load()
+  } catch (error) {
+    ElMessage.error(errorMessage(error, '添加用户失败，请重试'))
   } finally {
     adding.value = false
   }
@@ -194,12 +197,12 @@ async function submitAdd() {
 async function onChangeRole(row: UserVO, role: UserRole) {
   const prev = row.role
   row.role = role
-  const r = await probe(updateUserRole(row.id, role), null)
-  if (r.ready) {
+  try {
+    await updateUserRole(row.id, role)
     ElMessage.success(`${row.username} 角色已调整为「${roleLabel(role)}」`)
-  } else {
+  } catch (error) {
     row.role = prev // 失败回退
-    ready.value = false
+    ElMessage.error(errorMessage(error, '角色调整失败，请重试'))
   }
 }
 
@@ -213,12 +216,12 @@ async function onDelete(row: UserVO) {
   } catch {
     return // 用户取消
   }
-  const r = await probe(deleteUser(row.id), null)
-  if (r.ready) {
+  try {
+    await deleteUser(row.id)
     users.value = users.value.filter((u) => u.id !== row.id)
     ElMessage.success(`用户 ${row.username} 已删除`)
-  } else {
-    ready.value = false
+  } catch (error) {
+    ElMessage.error(errorMessage(error, '删除用户失败，请重试'))
   }
 }
 

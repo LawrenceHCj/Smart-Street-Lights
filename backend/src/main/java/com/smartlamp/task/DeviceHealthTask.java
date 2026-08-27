@@ -33,10 +33,12 @@ public class DeviceHealthTask {
 
         // 2. 挨个丢进写好的白盒规则引擎里算分
         for (Device device : devices) {
-            healthService.evaluateDeviceHealth(device);
-            count++;
+            if ("ONLINE".equalsIgnoreCase(device.getStatus())) {
+                healthService.evaluateDeviceHealth(device);
+                count++;
+            }
         }
 
-        log.info("自动化巡检完成，共为 {} 台设备生成了体检报告！", count);
+        log.info("自动化巡检完成，共为 {} 台在线设备生成了体检报告！", count);
     }
 }

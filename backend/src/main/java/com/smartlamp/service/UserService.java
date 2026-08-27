@@ -61,8 +61,7 @@ public class UserService {
         }
         // 管理员也不能修改自己的角色，避免当前会话权限与数据库角色不一致。
         if (actorUsername.equals(user.getUsername())
-                || "admin".equals(user.getUsername())
-                || "admin".equals(user.getRole())) {
+                || "admin".equals(user.getUsername())) {
             return false;
         }
         user.setRole(newRole);
@@ -71,13 +70,16 @@ public class UserService {
     }
 
     // 删除用户
-    public boolean deleteUser(Long id) {
+    public boolean deleteUser(Long id, String actorUsername, boolean actorIsAdmin) {
+        if (!actorIsAdmin || actorUsername == null || actorUsername.isBlank()) {
+            return false;
+        }
         SysUser user = sysUserRepository.findById(id).orElse(null);
         if (user == null) {
             return false;
         }
-        // 保护 admin 用户不被删除
-        if ("admin".equals(user.getUsername()) || "admin".equals(user.getRole())) {
+        // 只保护内置 admin 和当前登录账号；其他管理员账号仍可由管理员删除。
+        if ("admin".equals(user.getUsername()) || actorUsername.equals(user.getUsername())) {
             return false;
         }
         sysUserRepository.delete(user);

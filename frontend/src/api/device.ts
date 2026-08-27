@@ -49,8 +49,20 @@ export interface DeviceHealthReport {
   id: number | null
   deviceCode: string
   healthScore: number
+  telemetry: HealthTelemetry | null
   anomalies: HealthAnomaly[]
   createdAt: string
+}
+
+export interface HealthTelemetry {
+  lux: number | null
+  temperature: number | null
+  voltage: number | null
+  current: number | null
+  power: number | null
+  energy: number | null
+  lampStatus: string | null
+  collectedAt: number | null
 }
 
 export function getOverview(config?: AxiosRequestConfig): Promise<DashboardOverview> {

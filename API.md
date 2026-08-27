@@ -1,6 +1,6 @@
 # 智能路灯后端 —— 接口文档
 
-> 版本：0.0.1-SNAPSHOT ｜ 基于源码实际实现整理（非设计稿）
+> 版本：0.0.1-SNAPSHOT ｜ 基于源码实际实现整理（非设计稿） ｜ 更新日期：2026-08-26
 > 技术栈：Spring Boot 4.1.1 + Spring Data JPA + MySQL + Spring Integration MQTT (Paho)
 
 ---
@@ -41,12 +41,20 @@
 | code | 出现位置 | message |
 |---|---|---|
 | `0` | 全部接口 | `ok` |
-| `400` | `GET /api/devices/{deviceId}/light` | `设备不存在` |
+| `400` | 参数校验、资源冲突或设备查询 | 例如 `设备不存在`、`用户名已存在` |
 | `401` | `POST /api/auth/login` | `用户名或密码错误` |
+| `401` | 受保护接口 | `未登录或 token 无效` |
+| `403` | 用户管理接口 | `权限不足`，或不允许修改/删除受保护账号 |
 
 ### 1.4 鉴权说明
 
-**目前后端没有任何鉴权拦截。** 登录接口返回的是写死的字符串 `"mock-jwt-token"`，且不存在 Security 配置、过滤器或拦截器去校验它。**除登录外的所有接口当前均可匿名直接访问**，请求头带不带 token 都一样。详见 `FEATURES.md` 的"待办事项"。
+后端使用 Spring Security + JWT 鉴权。除 `POST /api/auth/login` 和 `/events` 外，其余接口均需携带有效 token；`/api/users/**` 还要求当前数据库账号的角色为 `admin`。
+
+```http
+Authorization: Bearer <token>
+```
+
+JWT 默认有效期为 24 小时。过滤器会根据 token 中的用户名重新查询数据库，因此账号被删除或禁用后，旧 token 会立即失效；角色权限也以数据库中的当前角色为准。
 
 ### 1.5 时间戳约定
 
@@ -58,12 +66,16 @@
 
 | # | 方法 | 路径 | 说明 | 数据来源 |
 |---|---|---|---|---|
-| 1 | POST | `/api/auth/login` | 用户登录 | 硬编码 |
-| 2 | GET | `/api/dashboard/overview` | 大屏总览统计 | `device` 表聚合 |
-| 3 | GET | `/api/devices` | 设备列表 | `device` 表 |
-| 4 | GET | `/api/devices/{deviceId}/light` | 设备当前光照 | `device` 表 |
-| 5 | GET | `/api/light/history` | 光照历史曲线 | `light_point` 表 |
-| 6 | POST | `/api/agent/ask` | AI 运维问答 | 硬编码（桩） |
+| 1 | POST | `/api/auth/login` | 用户登录 | `sys_user` 表 |
+| 2 | GET | `/api/users` | 用户列表（仅管理员） | `sys_user` 表 |
+| 3 | POST | `/api/users` | 新增用户（仅管理员） | `sys_user` 表 |
+| 4 | PUT | `/api/users/{id}/role` | 修改用户角色（仅管理员） | `sys_user` 表 |
+| 5 | DELETE | `/api/users/{id}` | 删除用户（仅管理员） | `sys_user` 表 |
+| 6 | GET | `/api/dashboard/overview` | 大屏总览统计 | `device` 表聚合 |
+| 7 | GET | `/api/devices` | 设备列表 | `device` 表 |
+| 8 | GET | `/api/devices/{deviceId}/light` | 设备当前光照 | `device` 表 |
+| 9 | GET | `/api/light/history` | 光照历史曲线 | `light_point` 表 |
+| 10 | POST | `/api/agent/ask` | AI 运维问答 | Agent 服务 |
 
 ---
 
@@ -96,18 +108,18 @@
   "code": 0,
   "message": "ok",
   "data": {
-    "token": "mock-jwt-token",
+    "token": "eyJhbGciOiJIUzI1NiJ9...",
     "username": "admin",
-    "role": "municipal"
+    "role": "admin"
   }
 }
 ```
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `token` | string | 当前恒为 `"mock-jwt-token"` |
-| `username` | string | 恒为 `"admin"` |
-| `role` | string | 恒为 `"municipal"`（市政角色） |
+| `token` | string | HS256 签名的 JWT，默认有效期 24 小时 |
+| `username` | string | 登录账号的用户名 |
+| `role` | string | 当前角色：`admin` / `municipal` / `operator` |
 
 **失败响应**
 
@@ -115,11 +127,135 @@
 { "code": 401, "message": "用户名或密码错误", "data": null }
 ```
 
-**实现说明**：账号密码硬编码为 `admin` / `123456`，未查库、未加密、未签发真实 JWT。
+**实现说明**：登录时查询 `sys_user`，要求账号状态为 `ENABLED`，并使用 `PasswordEncoder` 校验加密密码。成功后签发真实 JWT。
 
 ---
 
-### 3.2 大屏总览统计
+### 3.2 用户管理（仅管理员）
+
+以下四个接口均要求：
+
+```http
+Authorization: Bearer <admin-token>
+```
+
+未登录或 token 无效时返回 `code: 401`；当前账号不是管理员时返回 `code: 403`。
+
+#### 3.2.1 获取用户列表
+
+`GET /api/users`
+
+**成功响应**
+
+```json
+{
+  "code": 0,
+  "message": "ok",
+  "data": [
+    {
+      "id": 1,
+      "username": "admin",
+      "role": "admin",
+      "status": "ENABLED",
+      "createdAt": 1787529600000
+    }
+  ]
+}
+```
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | long | 用户数据库主键，修改和删除接口使用此值 |
+| `username` | string | 登录用户名 |
+| `role` | string | `admin` / `municipal` / `operator` |
+| `status` | string | 当前为 `ENABLED` 或其他禁用状态 |
+| `createdAt` | long/null | 创建时间，毫秒级 Unix 时间戳 |
+
+#### 3.2.2 新增用户
+
+`POST /api/users`
+
+**请求体**
+
+```json
+{
+  "username": "operator01",
+  "password": "initial-password",
+  "role": "operator"
+}
+```
+
+用户名和密码不能为空；角色只能是 `admin`、`municipal` 或 `operator`。新账号状态固定为 `ENABLED`，密码加密后保存。
+
+**成功响应**
+
+```json
+{ "code": 0, "message": "ok", "data": null }
+```
+
+**失败响应示例**
+
+```json
+{ "code": 400, "message": "用户名已存在", "data": null }
+```
+
+#### 3.2.3 修改用户角色
+
+`PUT /api/users/{id}/role`
+
+**请求体**
+
+```json
+{ "role": "municipal" }
+```
+
+管理员可以调整其他账号的角色，包括其他管理员账号，但不能修改：
+
+- 当前登录账号自身；
+- 用户名为 `admin` 的内置管理员账号。
+
+**成功响应**
+
+```json
+{ "code": 0, "message": "ok", "data": null }
+```
+
+**受保护账号响应**
+
+```json
+{ "code": 403, "message": "仅管理员可调整角色，且不能修改自己的角色", "data": null }
+```
+
+#### 3.2.4 删除用户
+
+`DELETE /api/users/{id}`
+
+管理员可以删除其他账号，即使目标账号的角色也是 `admin`。以下账号不可删除：
+
+- 当前登录账号自身；
+- 用户名为 `admin` 的内置管理员账号。
+
+删除为数据库物理删除，成功后该账号无法登录，已有 token 也会因查不到用户而失效。
+
+**成功响应**
+
+```json
+{ "code": 0, "message": "ok", "data": null }
+```
+
+**失败响应**
+
+```json
+{
+  "code": 403,
+  "message": "仅管理员可删除其他账号，且不能删除内置 admin 或当前账号",
+  "data": null
+}
+```
+
+---
+
+### 3.3 大屏总览统计
 
 `GET /api/dashboard/overview`
 
@@ -153,7 +289,7 @@
 
 ---
 
-### 3.3 设备列表
+### 3.4 设备列表
 
 `GET /api/devices`
 
@@ -191,7 +327,7 @@
 
 ---
 
-### 3.4 查询设备当前光照
+### 3.5 查询设备当前光照
 
 `GET /api/devices/{deviceId}/light`
 
@@ -233,7 +369,7 @@ GET /api/devices/SL-001/light
 
 ---
 
-### 3.5 查询光照历史
+### 3.6 查询光照历史
 
 `GET /api/light/history`
 
@@ -277,7 +413,7 @@ GET /api/light/history?deviceId=SL-001&start=1755748800000&end=1755835200000
 
 ---
 
-### 3.6 AI 运维问答
+### 3.7 AI 运维问答
 
 `POST /api/agent/ask`
 
@@ -437,6 +573,6 @@ Topic、JSON、设备编号、时间戳和数值字段会在事务写入前校�
 
 1. **判 `code` 不判 HTTP 状态** —— 业务失败也返回 HTTP 200。
 2. **没有配置 CORS** —— 前端独立端口（如 Vite 5173）直连会被浏览器拦截，需要后端加 `@CrossOrigin`/全局 CORS 配置，或前端配代理。
-3. **token 无实际作用** —— 后端不校验，前端自行决定是否在 header 里带。
+3. **所有受保护接口必须带 JWT** —— 使用 `Authorization: Bearer <token>`；用户管理接口额外要求当前账号为管理员。
 4. **设备标识统一用 `code`** —— 各接口路径/参数里的 `deviceId` 指的都是 `device.code`（如 `SL-001`），**不是**数据库主键 `id`。
 5. **参数缺失不会返回统一格式** —— 无全局异常处理器，参数校验失败/服务器异常会返回 Spring 默认错误结构，前端需容错。

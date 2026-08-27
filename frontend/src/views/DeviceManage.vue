@@ -131,6 +131,23 @@
             </div>
           </section>
 
+          <section class="report-section" aria-labelledby="telemetry-title">
+            <div class="report-section-head">
+              <div>
+                <div class="section-kicker">评分数据</div>
+                <h2 id="telemetry-title">采集指标</h2>
+              </div>
+              <span class="telemetry-time num">{{ telemetryTime(selectedReport.telemetry?.collectedAt) }}</span>
+            </div>
+            <div v-if="selectedReport.telemetry" class="telemetry-grid">
+              <div v-for="item in telemetryItems(selectedReport.telemetry)" :key="item.label" class="telemetry-item">
+                <span>{{ item.label }}</span>
+                <strong class="num">{{ item.value }}<small v-if="item.unit"> {{ item.unit }}</small></strong>
+              </div>
+            </div>
+            <div v-else class="telemetry-empty">该历史报告生成于采集快照功能启用前，暂无指标明细。</div>
+          </section>
+
           <section class="report-section" aria-labelledby="anomaly-title">
             <div class="report-section-head">
               <div>
@@ -199,8 +216,8 @@
 
       <template #footer>
         <div class="drawer-actions">
-          <span>基于设备最新遥测数据计算</span>
-          <el-button :icon="Refresh" type="primary" :loading="evaluating" @click="runEvaluation">立即体检</el-button>
+          <span>{{ selectedDeviceOnline ? '基于设备最新遥测数据计算' : '设备离线，无法进行健康评分' }}</span>
+          <el-button :icon="Refresh" type="primary" :loading="evaluating" :disabled="!selectedDeviceOnline" @click="runEvaluation">立即体检</el-button>
         </div>
       </template>
     </el-drawer>
@@ -241,7 +258,7 @@ import {
   listDevices,
   listLatestDeviceHealth,
 } from '../api/device'
-import type { DeviceHealthReport, DeviceVO } from '../api/device'
+import type { DeviceHealthReport, DeviceVO, HealthTelemetry } from '../api/device'
 import { addDevice, removeDevice } from '../api/deviceManage'
 import { probe } from '../api/helper'
 import NotReadyBanner from '../components/NotReadyBanner.vue'
@@ -316,6 +333,7 @@ const filteredHealthHistory = computed(() => {
 const form = reactive<{ code: string; location: string; longitude?: number; latitude?: number }>({ code: '', location: '' })
 
 const selectedReport = computed(() => healthHistory.value[0] ?? healthByDevice.value[selectedCode.value] ?? null)
+const selectedDeviceOnline = computed(() => devices.value.find((device) => device.code === selectedCode.value)?.status === 'ONLINE')
 
 const pad = (n: number) => String(n).padStart(2, '0')
 function time(ts: number | null) {
@@ -365,6 +383,26 @@ function reportTime(value: string) {
   return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
+function telemetryTime(value?: number | null) {
+  return value ? `采集于 ${time(value)}` : '采集时间未知'
+}
+
+function metric(value: number | null, digits = 1) {
+  return value == null ? '—' : Number(value.toFixed(digits)).toString()
+}
+
+function telemetryItems(data: HealthTelemetry) {
+  return [
+    { label: '照度', value: metric(data.lux), unit: 'Lux' },
+    { label: '温度', value: metric(data.temperature), unit: '℃' },
+    { label: '电压', value: metric(data.voltage), unit: 'V' },
+    { label: '电流', value: metric(data.current, 2), unit: 'A' },
+    { label: '功率', value: metric(data.power), unit: 'W' },
+    { label: '累计电量', value: metric(data.energy, 2), unit: 'kWh' },
+    { label: '灯具状态', value: data.lampStatus === 'ON' ? '开启' : data.lampStatus === 'OFF' ? '关闭' : '—', unit: '' },
+  ]
+}
+
 async function openHealth(row: DeviceVO) {
   selectedCode.value = row.code
   healthVisible.value = true
@@ -385,7 +423,7 @@ async function openHealth(row: DeviceVO) {
 }
 
 async function runEvaluation() {
-  if (!selectedCode.value) return
+  if (!selectedCode.value || !selectedDeviceOnline.value) return
   evaluating.value = true
   try {
     const report = await evaluateDeviceHealth(selectedCode.value)
@@ -624,6 +662,13 @@ onMounted(() => {
 .report-section { padding: 22px 0; border-bottom: 1px solid var(--border-subtle); }
 .report-section-head, .anomaly-main { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .report-section h2 { margin: 3px 0 0; font-size: 16px; }
+.telemetry-time { color: var(--text-muted); font-size: 11px; text-align: right; }
+.telemetry-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
+.telemetry-item { min-width: 0; padding: 12px 14px; border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--bg-soft); }
+.telemetry-item > span { display: block; margin-bottom: 5px; color: var(--text-muted); font-size: 11px; }
+.telemetry-item strong { color: var(--text-primary); font-size: 16px; }
+.telemetry-item small { color: var(--text-muted); font-size: 10px; font-weight: 500; }
+.telemetry-empty { margin-top: 16px; padding: 14px; border-radius: 10px; background: var(--bg-soft); color: var(--text-muted); font-size: 12px; line-height: 1.6; }
 .anomaly-count { color: var(--text-muted); font-size: 11px; }
 .anomaly-list, .history-list { margin: 16px 0 0; padding: 0; list-style: none; }
 .anomaly-list { display: grid; gap: 9px; }

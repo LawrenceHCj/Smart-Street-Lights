@@ -54,10 +54,12 @@ public class DeviceController {
     @PostMapping("/{deviceId}/health/evaluate")
     @PreAuthorize("hasAnyRole('admin','operator')")
     public ApiResponse<DeviceHealthDTO> evaluateHealth(@PathVariable String deviceId) {
-        DeviceHealthDTO report = healthService.evaluateDeviceHealth(deviceId);
-        return report == null
-                ? ApiResponse.error(404, "设备不存在")
-                : ApiResponse.success(report);
+        Device device = deviceService.getDeviceByCode(deviceId);
+        if (device == null) return ApiResponse.error(404, "设备不存在");
+        if (!"ONLINE".equalsIgnoreCase(device.getStatus())) {
+            return ApiResponse.error(409, "设备已离线，无法进行健康评分");
+        }
+        return ApiResponse.success(healthService.toDTO(healthService.evaluateDeviceHealth(device)));
     }
 
     @GetMapping("/{deviceId}/light")

@@ -4,6 +4,7 @@ import com.smartlamp.entity.Device;
 import com.smartlamp.entity.DeviceHealthReport;
 import com.smartlamp.dto.DeviceHealthDTO;
 import com.smartlamp.dto.HealthAnomalyDTO;
+import com.smartlamp.dto.HealthTelemetryDTO;
 import com.smartlamp.repository.DeviceRepository;
 import com.smartlamp.repository.DeviceHealthReportRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -36,6 +37,10 @@ public class DeviceHealthService {
      * 核心算分逻辑：白盒规则引擎
      */
     public DeviceHealthReport evaluateDeviceHealth(Device device) {
+        if (device == null || !"ONLINE".equalsIgnoreCase(device.getStatus())) {
+            if (device != null) log.info("跳过离线设备 {} 的健康评估", device.getCode());
+            return null;
+        }
         int score = 100;
         ArrayNode anomalyDetails = objectMapper.createArrayNode();
 
@@ -78,6 +83,7 @@ public class DeviceHealthService {
             report.setDeviceCode(device.getCode());
             report.setHealthScore(score);
             report.setAnomalyDetails(anomalyDetails.toString());
+            report.setTelemetrySnapshot(createTelemetrySnapshot(device).toString());
             report.setCreatedAt(LocalDateTime.now());
 
             // 3. 落库保存并返回
@@ -112,9 +118,65 @@ public class DeviceHealthService {
                 report.getId(),
                 report.getDeviceCode(),
                 report.getHealthScore(),
+                parseTelemetry(report.getTelemetrySnapshot()),
                 parseAnomalies(report.getAnomalyDetails()),
                 report.getCreatedAt()
         );
+    }
+
+    private ObjectNode createTelemetrySnapshot(Device device) {
+        ObjectNode snapshot = objectMapper.createObjectNode();
+        putNullable(snapshot, "lux", device.getLatestLux());
+        putNullable(snapshot, "temperature", device.getLatestTemperature());
+        putNullable(snapshot, "voltage", device.getLatestVoltage());
+        putNullable(snapshot, "current", device.getLatestCurrent());
+        putNullable(snapshot, "power", device.getLatestPower());
+        putNullable(snapshot, "energy", device.getLatestEnergy());
+        if (device.getLampStatus() == null) snapshot.putNull("lampStatus");
+        else snapshot.put("lampStatus", device.getLampStatus());
+        if (device.getLastSeen() == null) snapshot.putNull("collectedAt");
+        else snapshot.put("collectedAt", device.getLastSeen());
+        return snapshot;
+    }
+
+    private HealthTelemetryDTO parseTelemetry(String snapshot) {
+        if (snapshot == null || snapshot.isBlank()) return null;
+        try {
+            JsonNode node = objectMapper.readTree(snapshot);
+            return new HealthTelemetryDTO(
+                    nullableDouble(node, "lux"),
+                    nullableDouble(node, "temperature"),
+                    nullableDouble(node, "voltage"),
+                    nullableDouble(node, "current"),
+                    nullableDouble(node, "power"),
+                    nullableDouble(node, "energy"),
+                    nullableText(node, "lampStatus"),
+                    nullableLong(node, "collectedAt")
+            );
+        } catch (Exception e) {
+            log.warn("健康报告采集快照解析失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private void putNullable(ObjectNode node, String field, Double value) {
+        if (value == null) node.putNull(field);
+        else node.put(field, value);
+    }
+
+    private Double nullableDouble(JsonNode node, String field) {
+        JsonNode value = node.get(field);
+        return value == null || value.isNull() ? null : value.asDouble();
+    }
+
+    private Long nullableLong(JsonNode node, String field) {
+        JsonNode value = node.get(field);
+        return value == null || value.isNull() ? null : value.asLong();
+    }
+
+    private String nullableText(JsonNode node, String field) {
+        JsonNode value = node.get(field);
+        return value == null || value.isNull() ? null : value.asText();
     }
 
     private List<HealthAnomalyDTO> parseAnomalies(String details) {

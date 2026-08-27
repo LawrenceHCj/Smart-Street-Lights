@@ -31,6 +31,11 @@ export function isCurrentUserAdmin(): boolean {
   return getCurrentRole() === 'admin'
 }
 
+export function getCurrentUsername(): string | null {
+  const username = localStorage.getItem('username')?.trim()
+  return username || null
+}
+
 export function clearSession(): void {
   localStorage.removeItem('token')
   localStorage.removeItem('username')

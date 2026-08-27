@@ -70,10 +70,16 @@ public class UserController {
 
     // DELETE /api/users/{id}
     @DeleteMapping("/{id}")
-    public ApiResponse<Void> deleteUser(@PathVariable Long id) {
-        boolean success = userService.deleteUser(id);
+    public ApiResponse<Void> deleteUser(@PathVariable Long id, Authentication authentication) {
+        boolean isAdmin = authentication != null && authentication.getAuthorities().stream()
+                .anyMatch(authority -> "ROLE_admin".equals(authority.getAuthority()));
+        boolean success = userService.deleteUser(
+                id,
+                authentication == null ? null : authentication.getName(),
+                isAdmin
+        );
         if (!success) {
-            return ApiResponse.error(400, "用户不存在或不允许删除管理员");
+            return ApiResponse.error(403, "仅管理员可删除其他账号，且不能删除内置 admin 或当前账号");
         }
         return ApiResponse.success(null);
     }

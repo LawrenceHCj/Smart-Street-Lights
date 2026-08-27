@@ -57,6 +57,51 @@ class UserServiceTest {
         verify(userRepository).save(operator);
     }
 
+    @Test
+    void administratorCanChangeAnotherAdministratorRole() {
+        SysUser otherAdmin = user(2L, "Lawrence", "admin");
+        when(userRepository.findById(2L)).thenReturn(Optional.of(otherAdmin));
+
+        boolean updated = userService.updateUserRole(2L, "operator", "admin", true);
+
+        assertThat(updated).isTrue();
+        assertThat(otherAdmin.getRole()).isEqualTo("operator");
+        verify(userRepository).save(otherAdmin);
+    }
+
+    @Test
+    void administratorCanDeleteAnotherAdministratorAccount() {
+        SysUser otherAdmin = user(2L, "Lawrence", "admin");
+        when(userRepository.findById(2L)).thenReturn(Optional.of(otherAdmin));
+
+        boolean deleted = userService.deleteUser(2L, "admin", true);
+
+        assertThat(deleted).isTrue();
+        verify(userRepository).delete(otherAdmin);
+    }
+
+    @Test
+    void administratorCannotDeleteOwnAccount() {
+        SysUser currentAdmin = user(2L, "Lawrence", "admin");
+        when(userRepository.findById(2L)).thenReturn(Optional.of(currentAdmin));
+
+        boolean deleted = userService.deleteUser(2L, "Lawrence", true);
+
+        assertThat(deleted).isFalse();
+        verify(userRepository, never()).delete(currentAdmin);
+    }
+
+    @Test
+    void administratorCannotDeleteBuiltInAdminAccount() {
+        SysUser builtInAdmin = user(1L, "admin", "admin");
+        when(userRepository.findById(1L)).thenReturn(Optional.of(builtInAdmin));
+
+        boolean deleted = userService.deleteUser(1L, "Lawrence", true);
+
+        assertThat(deleted).isFalse();
+        verify(userRepository, never()).delete(builtInAdmin);
+    }
+
     private SysUser user(Long id, String username, String role) {
         SysUser user = new SysUser();
         user.setId(id);
