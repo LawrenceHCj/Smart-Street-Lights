@@ -10,7 +10,7 @@
 | 聊天（兼容旧） | POST | /api/assistant/chat | 已就绪 |
 | 确认操作 | POST | /api/agent/actions/{actionId}/confirm | 已就绪 |
 | 取消操作 | POST | /api/agent/actions/{actionId}/cancel | 已就绪 |
-| 聊天响应中的结构化 `action` 字段 | — | — | 待实现（§9） |
+| 聊天响应中的结构化 `action` 字段 | — | — | **已实现**（批量关闭/阈值/自动模式等需确认操作时返回，前端据此渲染聊天确认卡片） |
 
 - 所有 `/api/agent/**` 接口需要 JWT 认证（`Authorization: Bearer <token>`），前端 axios 拦截器已统一携带。
 - 统一响应包装：HTTP 恒 200，业务结果看 body：`{ "code": 0, "message": "ok", "data": ... }`；`code=0` 成功，`400` 参数类/业务拒绝，`500` 服务器错误。
@@ -54,6 +54,8 @@
 ```
 
 - `action` 字段**仅在产生待确认操作时返回**；普通问答、知识库回答没有该字段。
+- **开灯/关灯为免确认操作**（权限调整后）：admin/operator 提问时系统直接执行，执行结果在 `answer` 中如实转述（不返回 action 字段、无确认卡片）；municipal 或无权限时回答拒绝原因。
+- 需确认操作（当前为修改阈值/自动模式）才返回 `action` 字段与确认卡片。
 - `expiresAt` 为 epoch 毫秒（创建后 2 分钟有效）。
 - `actionType` 取值：`TURN_ON_LIGHT` / `TURN_OFF_LIGHT` / `UPDATE_LUX_THRESHOLD` / `UPDATE_AUTO_MODE`。
 - `summary` 为推荐展示文案（如"关闭路灯"、"修改光照阈值"、"开启自动控制"）；前端也可自行按 actionType 映射文案。
@@ -161,7 +163,8 @@
 - 即使前端未拦截，后端确认/取消会返回 400 `Action 已过期: ...`，前端收到后同样隐藏按钮并提示用户重新发起。
 - 重新发起：用户在聊天中重新提出控制请求即可生成新的 actionId。
 
-## 10. 联调前待办
+## 10. 联调待办
 
-- [ ] **5号（联调前完成）**：AskResponse 增加结构化 `action` 字段（从控制工具结果提取 actionId/actionType/targetId/summary/riskLevel/expiresAt/status/originalState/targetState）。
+- [x] ~~AskResponse 增加结构化 `action` 字段~~（已实现：需确认操作时返回，含 actionId/actionType/targetId/summary/riskLevel/expiresAt/status/originalState/targetState）
+- [ ] **2号（前端）**：Chat.vue 在收到含 `action` 字段的回复时渲染确认卡片（[确认执行][取消]），按 actionId 调 confirm/cancel 接口，按钮状态规则见 §8
 - [ ] （可选，2号 提出需求后加）：`GET /api/agent/actions/{actionId}` 查询接口，用于刷新/找回待确认操作。

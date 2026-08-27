@@ -11,6 +11,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -331,6 +332,40 @@ class ActionServiceTest {
         AgentAction result = actionService.cancel(action.getActionId(), OWNER, ROLE_ADMIN);
 
         assertThat(result.getStatus()).isEqualTo(ActionStatus.CANCELLED);
+        assertThat(executorCalls).hasValue(0);
+    }
+
+    // ============ 批量关闭确认（权限调整后开放） ============
+
+    @Test
+    void 批量关闭确认成功执行() {
+        actionGateway.registerExecutor(ActionType.TURN_OFF_ALL, action -> {
+            executorCalls.incrementAndGet();
+            return null;
+        });
+        when(deviceService.getAllDevices()).thenReturn(List.of(onlineDevice("lamp001", "ON"), onlineDevice("lamp002", "ON")));
+        AgentAction action = actionManager.create(ActionType.TURN_OFF_ALL, "device", "all", Map.of(), OWNER);
+
+        AgentAction result = actionService.confirmAndExecute(action.getActionId(), OWNER, ROLE_ADMIN);
+
+        assertThat(result.getStatus()).isEqualTo(ActionStatus.SUCCESS);
+        assertThat(executorCalls).hasValue(1);
+    }
+
+    @Test
+    void 批量关闭确认时已无在线设备拒绝() {
+        actionGateway.registerExecutor(ActionType.TURN_OFF_ALL, action -> {
+            executorCalls.incrementAndGet();
+            return null;
+        });
+        when(deviceService.getAllDevices()).thenReturn(List.of());
+        AgentAction action = actionManager.create(ActionType.TURN_OFF_ALL, "device", "all", Map.of(), OWNER);
+
+        assertThatThrownBy(() -> actionService.confirmAndExecute(action.getActionId(), OWNER, ROLE_ADMIN))
+                .isInstanceOf(ActionRejectedException.class)
+                .hasMessageContaining("状态已变化");
+        assertThat(actionManager.find(action.getActionId()).orElseThrow().getStatus())
+                .isEqualTo(ActionStatus.FAILED);
         assertThat(executorCalls).hasValue(0);
     }
 }

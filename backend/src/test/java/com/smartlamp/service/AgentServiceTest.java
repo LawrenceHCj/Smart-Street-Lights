@@ -55,6 +55,10 @@ class AgentServiceTest {
     @Mock
     private com.smartlamp.agent.actions.AgentActionAuditService agentActionAuditService;
 
+    @Mock
+    private DeviceCommandService deviceCommandService;
+
+
     private AgentService agentService;
     private com.smartlamp.agent.actions.ActionManager actionManager;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -77,6 +81,12 @@ class AgentServiceTest {
         // 阶段22 修复：补齐审计/配置服务注入，否则工具执行会被静默降级，控制场景测试不真实
         ReflectionTestUtils.setField(agentActionTools, "agentActionAuditService", agentActionAuditService);
         ReflectionTestUtils.setField(agentActionTools, "configService", configService);
+        // 开灯/关灯免确认自动执行：工具 → 网关 → DeviceCommandService（ackTimeout 0 = 不等待回执）
+        com.smartlamp.agent.actions.ActionGateway actionGateway =
+                new com.smartlamp.agent.actions.ActionGateway();
+        ReflectionTestUtils.setField(actionGateway, "actionManager", actionManager);
+        new com.smartlamp.agent.actions.DeviceControlExecutor(actionGateway, deviceCommandService, 0L);
+        ReflectionTestUtils.setField(agentActionTools, "actionGateway", actionGateway);
 
         ToolCatalog toolCatalog = new ToolCatalog();
         ReflectionTestUtils.setField(toolCatalog, "agentTools", agentTools);
@@ -88,6 +98,28 @@ class AgentServiceTest {
         ReflectionTestUtils.setField(agentService, "promptProvider", new PromptProvider());
         ReflectionTestUtils.setField(agentService, "llmClient", llmClient);
         ReflectionTestUtils.setField(agentService, "toolCatalog", toolCatalog);
+    }
+
+    // 设置 admin 认证上下文（控制类测试需要角色权限）
+    private void setAdminAuth() {
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(
+                new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                        "admin", null, java.util.List.of(
+                        new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_admin"))));
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void clearSecurityContext() {
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+    }
+
+    private com.smartlamp.entity.DeviceCommand dispatchedCommand(String commandId, String deviceCode, String action) {
+        com.smartlamp.entity.DeviceCommand command = new com.smartlamp.entity.DeviceCommand();
+        command.setCommandId(commandId);
+        command.setDeviceCode(deviceCode);
+        command.setAction(action);
+        command.setStatus(com.smartlamp.entity.enums.CommandStatus.DISPATCHED);
+        return command;
     }
 
     // ============ 本地模式（未配置大模型） ============
@@ -303,60 +335,71 @@ class AgentServiceTest {
     }
 
     @Test
-    void 关闭lamp001生成待确认Action并请求用户确认() throws Exception {
+    void 关闭lamp001自动执行并如实报告未获回执() throws Exception {
         when(llmClient.isConfigured()).thenReturn(true);
+        setAdminAuth();
         when(deviceService.getDeviceByCode("lamp001")).thenReturn(onlineDevice("lamp001", "ON"));
+        when(deviceCommandService.dispatch("lamp001", "OFF", "AGENT"))
+                .thenReturn(dispatchedCommand("CMD-1", "lamp001", "OFF"));
         when(llmClient.completeChat(anyList(), any(ArrayNode.class)))
                 .thenReturn(responseWithToolCalls(toolCall("call-1", "turn_off_light", "{\"deviceCode\":\"lamp001\"}")))
-                .thenReturn(response("已生成关闭 lamp001 的待确认操作请求：设备当前在线、灯处于开启状态。请回复\"确认\"以执行该操作。"));
+                .thenReturn(response("已执行关闭 lamp001 的指令，但当前尚未获得设备执行确认，请以设备状态为准。"));
 
         AskResponse result = agentService.ask("帮我关闭 lamp001");
 
-        assertThat(result.getAnswer()).contains("确认");
+        assertThat(result.getAnswer()).contains("尚未获得设备执行确认");
         assertThat(result.getSources()).anyMatch(s -> "action".equals(s.getSection()) && s.getTitle().contains("关灯"));
-        // 安全红线：未调用任何控制写方法
+        // 已走正式控制链路（与网页同一 DeviceCommandService）
+        verify(deviceCommandService).dispatch("lamp001", "OFF", "AGENT");
+        // 安全红线：未调用任何直接写库方法
         verify(deviceService, never()).updateLampStatus(any(), any());
-        // 阶段22 加固：确认 Action 真实创建且处于待确认状态（此前因测试装配缺失被静默降级）
+        // 审计：Action 真实创建且最终为已执行终态（未获回执 → COMMAND_ACCEPTED，绝不谎报 SUCCESS）
         org.mockito.ArgumentCaptor<com.smartlamp.agent.actions.AgentAction> captor =
                 org.mockito.ArgumentCaptor.forClass(com.smartlamp.agent.actions.AgentAction.class);
         verify(agentActionAuditService).recordCreated(captor.capture());
         assertThat(captor.getValue().getStatus())
-                .isEqualTo(com.smartlamp.agent.actions.ActionStatus.PENDING_CONFIRMATION);
+                .isEqualTo(com.smartlamp.agent.actions.ActionStatus.COMMAND_ACCEPTED);
         assertThat(captor.getValue().getTargetId()).isEqualTo("lamp001");
     }
 
     @Test
-    void 打开lamp001生成待确认Action() throws Exception {
+    void 打开lamp001自动执行() throws Exception {
         when(llmClient.isConfigured()).thenReturn(true);
+        setAdminAuth();
         when(deviceService.getDeviceByCode("lamp001")).thenReturn(onlineDevice("lamp001", "OFF"));
+        when(deviceCommandService.dispatch("lamp001", "ON", "AGENT"))
+                .thenReturn(dispatchedCommand("CMD-2", "lamp001", "ON"));
         when(llmClient.completeChat(anyList(), any(ArrayNode.class)))
                 .thenReturn(responseWithToolCalls(toolCall("call-1", "turn_on_light", "{\"deviceCode\":\"lamp001\"}")))
-                .thenReturn(response("已生成打开 lamp001 的待确认操作请求：设备当前在线、灯处于关闭状态。请回复\"确认\"以执行。"));
+                .thenReturn(response("已执行打开 lamp001 的指令，尚未获得设备执行确认。"));
 
         AskResponse result = agentService.ask("帮我打开 lamp001");
 
-        assertThat(result.getAnswer()).contains("确认");
         assertThat(result.getSources()).anyMatch(s -> "action".equals(s.getSection()));
+        verify(deviceCommandService).dispatch("lamp001", "ON", "AGENT");
         verify(deviceService, never()).updateLampStatus(any(), any());
     }
 
     @Test
-    void 控制不存在的设备时如实告知且不创建操作请求() throws Exception {
+    void 控制不存在的设备时如实告知且不执行() throws Exception {
         when(llmClient.isConfigured()).thenReturn(true);
+        setAdminAuth();
         when(deviceService.getDeviceByCode("lamp999")).thenReturn(null);
         when(llmClient.completeChat(anyList(), any(ArrayNode.class)))
                 .thenReturn(responseWithToolCalls(toolCall("call-1", "turn_off_light", "{\"deviceCode\":\"lamp999\"}")))
-                .thenReturn(response("系统检查结果：设备 lamp999 不存在，未创建任何操作请求，请核对设备编号。"));
+                .thenReturn(response("系统检查结果：设备 lamp999 不存在，未执行任何操作，请核对设备编号。"));
 
         AskResponse result = agentService.ask("帮我关闭 lamp999");
 
         assertThat(result.getAnswer()).contains("不存在");
+        verify(deviceCommandService, never()).dispatch(any(), any(), any());
         verify(deviceService, never()).updateLampStatus(any(), any());
     }
 
     @Test
     void 控制离线设备时如实告知不继续() throws Exception {
         when(llmClient.isConfigured()).thenReturn(true);
+        setAdminAuth();
         Device device = onlineDevice("lamp003", "OFF");
         device.setStatus("OFFLINE");
         when(deviceService.getDeviceByCode("lamp003")).thenReturn(device);
@@ -367,15 +410,19 @@ class AgentServiceTest {
         AskResponse result = agentService.ask("帮我关闭 lamp003");
 
         assertThat(result.getAnswer()).contains("离线");
+        verify(deviceCommandService, never()).dispatch(any(), any(), any());
         verify(deviceService, never()).updateLampStatus(any(), any());
     }
 
     // ============ 阶段22：LLM 幻觉与后端真实状态 ============
 
     @Test
-    void 模型声称执行成功但后端Action仍为待确认不产生任何执行() throws Exception {
+    void 模型声称执行成功但后端真实状态为未获回执() throws Exception {
         when(llmClient.isConfigured()).thenReturn(true);
+        setAdminAuth();
         when(deviceService.getDeviceByCode("lamp001")).thenReturn(onlineDevice("lamp001", "ON"));
+        when(deviceCommandService.dispatch("lamp001", "OFF", "AGENT"))
+                .thenReturn(dispatchedCommand("CMD-3", "lamp001", "OFF"));
         when(llmClient.completeChat(anyList(), any(ArrayNode.class)))
                 .thenReturn(responseWithToolCalls(toolCall("call-1", "turn_off_light", "{\"deviceCode\":\"lamp001\"}")))
                 // 第二轮：模型幻觉，直接声称"已经执行成功"
@@ -384,16 +431,42 @@ class AgentServiceTest {
         AskResponse result = agentService.ask("帮我关闭 lamp001");
 
         // 模型的回答文本无法被后端改写（如实说明：聊天回答以模型文本呈现，
-        // 但真正的执行状态以后端 Action 为准——确认接口返回的状态才是事实）
+        // 但真正的执行状态以后端 Action/命令表为准——未收到回执就是 COMMAND_ACCEPTED）
         assertThat(result.getAnswer()).contains("已成功关闭");
-        // 后端事实：Action 仍为 PENDING_CONFIRMATION，绝未执行
         org.mockito.ArgumentCaptor<com.smartlamp.agent.actions.AgentAction> captor =
                 org.mockito.ArgumentCaptor.forClass(com.smartlamp.agent.actions.AgentAction.class);
         verify(agentActionAuditService).recordCreated(captor.capture());
+        // 后端事实：命令已下发但未获回执，绝不标 SUCCESS
         assertThat(captor.getValue().getStatus())
-                .isEqualTo(com.smartlamp.agent.actions.ActionStatus.PENDING_CONFIRMATION);
+                .isEqualTo(com.smartlamp.agent.actions.ActionStatus.COMMAND_ACCEPTED);
+        assertThat(captor.getValue().getMessage()).contains("尚未获得设备执行确认");
         verify(deviceService, never()).updateLampStatus(any(), any());
-        // 没有确认环节，任何执行器都不会被调用（执行通道只有 ActionGateway → confirm）
+    }
+
+    // ============ 权限调整：批量关闭返回结构化待确认信息（前端聊天确认卡片） ============
+
+    @Test
+    void 批量关闭生成结构化action字段供前端渲染确认按钮() throws Exception {
+        when(llmClient.isConfigured()).thenReturn(true);
+        setAdminAuth();
+        when(deviceService.getAllDevices()).thenReturn(List.of(
+                onlineDevice("lamp001", "ON"), onlineDevice("lamp002", "ON")));
+        when(llmClient.completeChat(anyList(), any(ArrayNode.class)))
+                .thenReturn(responseWithToolCalls(toolCall("call-1", "turn_off_all", "{}")))
+                .thenReturn(response("已生成批量关闭请求，请在确认卡片上点击确认。"));
+
+        AskResponse result = agentService.ask("把所有路灯都关掉");
+
+        assertThat(result.getAnswer()).contains("确认");
+        // 结构化 action 字段：前端据此在对话中渲染确认按钮（阶段21 联调落地）
+        assertThat(result.getAction()).isNotNull();
+        assertThat(result.getAction().getActionType()).isEqualTo("TURN_OFF_ALL");
+        assertThat(result.getAction().getStatus()).isEqualTo("PENDING_CONFIRMATION");
+        assertThat(result.getAction().getActionId()).isNotBlank();
+        assertThat(result.getAction().getExpiresAt()).isPositive();
+        assertThat(result.getAction().getSummary()).contains("2 台在线");
+        // 绝不自动执行：等待用户按 actionId 确认
+        verify(deviceCommandService, never()).dispatch(any(), any(), any());
     }
 
     // ============ 阶段27：历史消息注入 ============

@@ -54,9 +54,10 @@ class PromptProviderTest {
     void 包含控制意图与待确认操作规则() {
         assertThat(prompt).contains("turn_on_light");
         assertThat(prompt).contains("turn_off_light");
-        assertThat(prompt).contains("不会真正执行控制");
-        assertThat(prompt).contains("等待确认");
+        assertThat(prompt).contains("直接执行");
+        assertThat(prompt).contains("REJECTED_NO_PERMISSION");
         assertThat(prompt).contains("PENDING_CONFIRMATION");
+        assertThat(prompt).contains("尚未获得设备执行确认");
     }
 
     // ============ 阶段20：配置类控制规则 ============
@@ -111,7 +112,8 @@ class PromptProviderTest {
     @Test
     void 批量操作拒绝与模糊命令追问规则() {
         assertThat(prompt).contains("批量操作");
-        assertThat(prompt).contains("暂未开放");
+        assertThat(prompt).contains("仅\"关闭全部设备\"开放");
+        assertThat(prompt).contains("绝不自动执行");
         assertThat(prompt).contains("必须追问");
         assertThat(prompt).contains("不得自行猜测");
     }

@@ -15,12 +15,13 @@ public enum ActionType {
     // ============ 低风险写（必须用户确认） ============
     TURN_ON_LIGHT("单台路灯开灯", ActionRisk.LOW_WRITE, true, Set.of()),
     TURN_OFF_LIGHT("单台路灯关灯", ActionRisk.LOW_WRITE, true, Set.of()),
+    // 批量关闭（权限调整后开放）：低风险写，必须用户二次确认后执行（确认入口在聊天卡片）
+    TURN_OFF_ALL("关闭全部设备", ActionRisk.LOW_WRITE, true, Set.of()),
     // 配置类（阶段20 开放）：只开放光照阈值与自动模式，其余配置仍不开放
     UPDATE_LUX_THRESHOLD("修改光照阈值", ActionRisk.LOW_WRITE, true, Set.of("value")),
     UPDATE_AUTO_MODE("修改自动模式", ActionRisk.LOW_WRITE, true, Set.of("enabled")),
 
     // ============ 高风险写（Agent 禁止执行） ============
-    TURN_OFF_ALL("关闭全部设备", ActionRisk.HIGH_WRITE, false, Set.of()),
     BULK_UPDATE_DEVICES("批量修改设备", ActionRisk.HIGH_WRITE, false, Set.of()),
     DELETE_DEVICE("删除设备", ActionRisk.HIGH_WRITE, false, Set.of()),
     UNBIND_DEVICE("解绑设备", ActionRisk.HIGH_WRITE, false, Set.of());

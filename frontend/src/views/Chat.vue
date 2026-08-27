@@ -78,6 +78,38 @@
           </div>
           <div class="msg-body">
             <div class="text">{{ m.content }}</div>
+            <!-- 【5号代做·需与2号对账】待确认操作卡片：仅 PENDING_CONFIRMATION 且未处理时显示 -->
+            <div
+              v-if="m.role === 'bot' && m.action && m.action.status === 'PENDING_CONFIRMATION' && !m.actionResult"
+              class="action-card"
+            >
+              <div class="ac-title">AI 请求执行操作</div>
+              <div class="ac-rows">
+                <div class="ac-row"><span>操作</span>{{ actionLabel(m.action.actionType) }}</div>
+                <div v-if="m.action.targetId && m.action.targetId !== 'system'" class="ac-row">
+                  <span>设备</span>{{ m.action.targetId === 'all' ? '全部在线设备' : m.action.targetId }}
+                </div>
+                <div v-if="m.action.originalState" class="ac-row"><span>当前状态</span>{{ m.action.originalState }}</div>
+                <div v-if="m.action.targetState" class="ac-row"><span>目标状态</span>{{ m.action.targetState }}</div>
+              </div>
+              <div class="ac-btns">
+                <el-button
+                  type="primary"
+                  size="small"
+                  :loading="m.actionLoading"
+                  :disabled="isActionExpired(m)"
+                  @click="confirmPending(m)"
+                >
+                  确认执行
+                </el-button>
+                <el-button size="small" :disabled="m.actionLoading || isActionExpired(m)" @click="cancelPending(m)">
+                  取消
+                </el-button>
+                <span v-if="isActionExpired(m)" class="ac-expired">已过期，请重新发起</span>
+              </div>
+            </div>
+            <!-- 确认/取消后的结果文案（按后端真实状态如实展示） -->
+            <div v-if="m.role === 'bot' && m.actionResult" class="action-result">{{ m.actionResult }}</div>
             <div v-if="m.sources && m.sources.length" class="sources">
               <div class="src-label">引用来源</div>
               <div v-for="(s, j) in m.sources" :key="j" class="src">
@@ -170,13 +202,19 @@ import {
   getConversationMessages,
   deleteConversation,
   parseMessageSources,
+  confirmAction,
+  cancelAction,
 } from '../api/agent'
-import type { AgentMessage, Conversation, Source } from '../api/agent'
+import type { AgentMessage, AgentActionResult, Conversation, PendingAction, Source } from '../api/agent'
 
 interface Msg {
   role: 'user' | 'bot'
   content: string
   sources?: Source[]
+  /** 【5号代做·需与2号对账】待确认操作与处理状态 */
+  action?: PendingAction | null
+  actionResult?: string | null
+  actionLoading?: boolean
 }
 
 const KEY = 'chatConversationId'
@@ -304,7 +342,8 @@ async function send(retrying = false) {
   scrollBottom()
   try {
     const r = await ask(q, currentId.value || undefined)
-    messages.value.push({ role: 'bot', content: r.answer, sources: r.sources })
+    // 【5号代做·需与2号对账】携带待确认操作：卡片在消息下方渲染确认/取消按钮
+    messages.value.push({ role: 'bot', content: r.answer, sources: r.sources, action: r.action ?? null })
     if (r.conversationId) currentId.value = r.conversationId
     failedQuestion.value = ''
     refreshConversations()
@@ -313,6 +352,67 @@ async function send(retrying = false) {
   } finally {
     loading.value = false
     scrollBottom()
+  }
+}
+
+// ===== 【5号代做·需与2号对账】待确认操作卡片交互：必须按 actionId 调确认/取消接口 =====
+
+function actionLabel(type: string): string {
+  const map: Record<string, string> = {
+    TURN_ON_LIGHT: '打开路灯',
+    TURN_OFF_LIGHT: '关闭路灯',
+    TURN_OFF_ALL: '关闭全部设备',
+    UPDATE_LUX_THRESHOLD: '修改光照阈值',
+    UPDATE_AUTO_MODE: '修改自动模式',
+  }
+  return map[type] || type
+}
+
+function isActionExpired(m: Msg): boolean {
+  return !!m.action?.expiresAt && m.action.expiresAt <= Date.now()
+}
+
+/** 按后端真实状态生成结果文案（COMMAND_ACCEPTED 绝不显示"成功"） */
+function actionResultText(r: AgentActionResult): string {
+  const map: Record<string, string> = {
+    SUCCESS: r.message || '已执行成功',
+    DEVICE_CONFIRMED: r.message || '设备已确认执行',
+    COMMAND_ACCEPTED: r.message || '控制指令已发送，但当前尚未获得设备执行确认',
+    FAILED: r.message || '执行失败',
+    CANCELLED: '已取消',
+    EXPIRED: '已过期，请重新发起',
+  }
+  return map[r.status] || r.message || r.status
+}
+
+async function confirmPending(m: Msg) {
+  if (!m.action || m.actionLoading || isActionExpired(m)) return
+  m.actionLoading = true
+  try {
+    const r = await confirmAction(m.action.actionId)
+    m.action = null
+    m.actionResult = actionResultText(r)
+  } catch (e) {
+    // 业务拒绝（已过期/重复操作/设备状态变化等）按后端 message 如实展示
+    m.action = null
+    m.actionResult = (e as { message?: string })?.message || '操作失败，请重试'
+  } finally {
+    m.actionLoading = false
+  }
+}
+
+async function cancelPending(m: Msg) {
+  if (!m.action || m.actionLoading || isActionExpired(m)) return
+  m.actionLoading = true
+  try {
+    await cancelAction(m.action.actionId)
+    m.action = null
+    m.actionResult = '已取消'
+  } catch (e) {
+    m.action = null
+    m.actionResult = (e as { message?: string })?.message || '取消失败，请重试'
+  } finally {
+    m.actionLoading = false
   }
 }
 
@@ -476,6 +576,57 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 7px;
+}
+/* 【5号代做·需与2号对账】待确认操作卡片 */
+.action-card {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(208, 255, 111, 0.3);
+  border-radius: 4px;
+  background: rgba(208, 255, 111, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ac-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--signal, #d0ff6f);
+  letter-spacing: 0.04em;
+}
+.ac-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.ac-row {
+  font-size: 12.5px;
+  color: #dcebe5;
+  line-height: 1.5;
+}
+.ac-row span {
+  display: inline-block;
+  min-width: 64px;
+  color: #8ba39a;
+}
+.ac-btns {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ac-expired {
+  font-size: 11.5px;
+  color: #ffaaa3;
+}
+.action-result {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 12.5px;
+  color: #dcebe5;
+  line-height: 1.6;
 }
 .src-label {
   font-size: 11px;

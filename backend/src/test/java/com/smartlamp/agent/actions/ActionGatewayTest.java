@@ -134,7 +134,7 @@ class ActionGatewayTest {
 
     @Test
     void 高风险操作不允许注册执行器() {
-        assertThatThrownBy(() -> gateway.registerExecutor(ActionType.TURN_OFF_ALL, a -> null))
+        assertThatThrownBy(() -> gateway.registerExecutor(ActionType.DELETE_DEVICE, a -> null))
                 .isInstanceOf(ActionRejectedException.class).hasMessageContaining("高风险");
     }
 
