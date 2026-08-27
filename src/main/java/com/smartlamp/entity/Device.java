@@ -1,6 +1,5 @@
 package com.smartlamp.entity;
 
-import com.smartlamp.entity.enums.DeviceStatus;
 import lombok.Data;
 
 import jakarta.persistence.*;
@@ -17,20 +16,20 @@ public class Device {
     @Column(unique = true, nullable = false)
     private String code;
 
+    private String name;
     private String location;
-
     private Double longitude;
     private Double latitude;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private DeviceStatus status = DeviceStatus.OFFLINE;  // 默认离线
-
+    private String binding;
+    private Boolean bound = true;
+    private String lampStatus = "OFF";
+    private String status;
     private Double latestLux;
+    private Double latestTemperature;
+    private Double latestVoltage;
+    private Double latestCurrent;
+    private Double latestPower;
+    private Double latestEnergy;
     private Long lastSeen;
-    private Long lastTelemetryAt;   // 最近一次遥测数据的采集时间戳（毫秒）
-    private Boolean lightOn = false;
-
     private LocalDateTime createdAt;
-
 }

@@ -1,13 +1,12 @@
 package com.smartlamp.service;
 
-import com.smartlamp.entity.enums.DeviceStatus;
-import com.smartlamp.dto.AddDeviceRequest;
 import com.smartlamp.dto.DeviceDTO;
 import com.smartlamp.dto.LightDataDTO;
-import com.smartlamp.dto.UpdateDeviceRequest;
 import com.smartlamp.entity.Device;
 import com.smartlamp.repository.AlarmRepository;
 import com.smartlamp.repository.DeviceRepository;
+import com.smartlamp.repository.DeviceCommandRepository;
+import com.smartlamp.repository.DeviceHealthReportRepository;
 import com.smartlamp.repository.LightPointRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -29,7 +28,13 @@ public class DeviceService {
     @Autowired
     private AlarmRepository alarmRepository;
 
-    // 获取所有设备实体（备用）
+    @Autowired
+    private DeviceCommandRepository deviceCommandRepository;
+
+    @Autowired
+    private DeviceHealthReportRepository deviceHealthReportRepository;
+
+    // 原有的获取所有设备实体（备用）
     public List<Device> getAllDevices() {
         return deviceRepository.findAll();
     }
@@ -37,7 +42,16 @@ public class DeviceService {
     // 获取所有设备 DTO（用于 /api/devices）
     public List<DeviceDTO> getAllDeviceDTOs() {
         return deviceRepository.findAll().stream()
-                .map(this::convertToDTO)
+                .map(device -> new DeviceDTO(
+                        device.getId(),
+                        device.getCode(),
+                        device.getLocation(),
+                        device.getLongitude(),
+                        device.getLatitude(),
+                        device.getStatus(),
+                        device.getLatestLux(),
+                        device.getLastSeen()
+                ))
                 .collect(Collectors.toList());
     }
 
@@ -55,76 +69,63 @@ public class DeviceService {
         return new LightDataDTO(device.getCode(), device.getLatestLux(), device.getLastSeen());
     }
 
-    // 添加设备，返回 DeviceDTO
-    public DeviceDTO addDevice(AddDeviceRequest request) {
-        if (deviceRepository.findByCode(request.getCode()).isPresent()) {
+    // 添加设备
+    public Device addDevice(String code, String name, String location, String binding, Double longitude, Double latitude) {
+        // 检查设备编号是否已存在
+        if (deviceRepository.findByCode(code).isPresent()) {
             return null;
         }
         Device device = new Device();
-        device.setCode(request.getCode());
-        device.setLocation(request.getLocation());
-        device.setLongitude(request.getLongitude());
-        device.setLatitude(request.getLatitude());
-        device.setStatus(DeviceStatus.OFFLINE);
+        device.setCode(code);
+        device.setName(name == null || name.isBlank() ? code : name.trim());
+        device.setLocation(location);
+        device.setLongitude(longitude);
+        device.setLatitude(latitude);
+        device.setBinding(binding == null ? "" : binding.trim());
+        device.setBound(true);
+        device.setLampStatus("OFF");
+        device.setStatus("OFFLINE"); // 初始状态离线，等待心跳
         device.setLatestLux(null);
         device.setLastSeen(null);
-        device.setLightOn(false);
         device.setCreatedAt(LocalDateTime.now());
-        deviceRepository.save(device);
-        return convertToDTO(device);
+        return deviceRepository.save(device);
     }
 
-    // 更新设备信息
-    public DeviceDTO updateDevice(String code, UpdateDeviceRequest request) {
-        Device device = deviceRepository.findByCode(code).orElse(null);
-        if (device == null) {
-            return null;
-        }
-        if (request.getLocation() != null) {
-            device.setLocation(request.getLocation());
-        }
-        if (request.getLongitude() != null) {
-            device.setLongitude(request.getLongitude());
-        }
-        if (request.getLatitude() != null) {
-            device.setLatitude(request.getLatitude());
-        }
-        deviceRepository.save(device);
-        return convertToDTO(device);
+    public Device updateDevice(String code, String name, String location, String binding, Boolean bound,
+                               Double longitude, Double latitude) {
+        Device device = getDeviceByCode(code);
+        if (device == null) return null;
+        if (name != null) device.setName(name.trim());
+        if (location != null) device.setLocation(location.trim());
+        if (binding != null) device.setBinding(binding.trim());
+        if (bound != null) device.setBound(bound);
+        if (longitude != null) device.setLongitude(longitude);
+        if (latitude != null) device.setLatitude(latitude);
+        return deviceRepository.save(device);
     }
 
-    // 保存设备
-    public void saveDevice(Device device) {
+    public DeviceDTO toDTO(Device device) {
+        return new DeviceDTO(device.getId(), device.getCode(), device.getLocation(), device.getLongitude(), device.getLatitude(), device.getStatus(),
+                device.getLatestLux(), device.getLastSeen());
+    }
+
+    public void updateLampStatus(Device device, String action) {
+        device.setLampStatus(action);
         deviceRepository.save(device);
     }
 
-    // 解绑设备（级联删除光照历史和告警）
+    // 删除设备及其关联遥测与告警，避免遗留孤儿数据
     @Transactional
     public boolean removeDevice(String code) {
         Device device = deviceRepository.findByCode(code).orElse(null);
         if (device == null) {
-            return false;
+            return false; // 设备不存在
         }
-        // 先删除该设备的光照历史
         lightPointRepository.deleteByDeviceCode(code);
-        // 再删除该设备的告警记录
         alarmRepository.deleteByDeviceId(code);
-        // 最后删除设备本身
+        deviceCommandRepository.deleteByDeviceCode(code);
+        deviceHealthReportRepository.deleteByDeviceCode(code);
         deviceRepository.delete(device);
         return true;
-    }
-
-    // 实体转 DTO
-    private DeviceDTO convertToDTO(Device device) {
-        DeviceDTO dto = new DeviceDTO();
-        dto.setId(device.getId());
-        dto.setCode(device.getCode());
-        dto.setLocation(device.getLocation());
-        dto.setLongitude(device.getLongitude());
-        dto.setLatitude(device.getLatitude());
-        dto.setStatus(device.getStatus().name());
-        dto.setLatestLux(device.getLatestLux());
-        dto.setLastSeen(device.getLastSeen());
-        return dto;
     }
 }

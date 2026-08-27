@@ -22,15 +22,19 @@ public class AuthService {
     private JwtUtil jwtUtil;
 
     public LoginResponse login(LoginRequest request) {
+        if (request == null || request.getUsername() == null || request.getUsername().isBlank()
+                || request.getPassword() == null || request.getPassword().isBlank()) {
+            return null;
+        }
         SysUser user = sysUserRepository.findByUsername(request.getUsername())
                 .orElse(null);
-        if (user == null) {
+        if (user == null || !"ENABLED".equals(user.getStatus())) {
             return null;
         }
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             return null;
         }
-        String token = jwtUtil.generateToken(user.getUsername(), user.getRole().name());
-        return new LoginResponse(token, user.getUsername(), user.getRole().name());
+        String token = jwtUtil.generateToken(user.getUsername(), user.getRole());
+        return new LoginResponse(token, user.getUsername(), user.getRole());
     }
 }

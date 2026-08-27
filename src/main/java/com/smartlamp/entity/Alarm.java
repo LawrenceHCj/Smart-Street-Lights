@@ -1,7 +1,5 @@
 package com.smartlamp.entity;
 
-import com.smartlamp.entity.enums.AlarmLevel;
-import com.smartlamp.entity.enums.AlarmStatus;
 import lombok.Data;
 
 import jakarta.persistence.*;
@@ -24,9 +22,8 @@ public class Alarm {
     @Column(nullable = false)
     private String type;        // 告警类型，如 "离线"
 
-    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private AlarmLevel level;   // INFO / WARNING / CRITICAL
+    private String level;       // info / warning / critical
 
     @Column(nullable = false)
     private String message;     // 告警内容
@@ -34,9 +31,8 @@ public class Alarm {
     @Column(nullable = false)
     private Long ts;            // 触发毫秒时间戳
 
-    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private AlarmStatus status; // OPEN / ACKED / RECOVERED
+    private String status;      // OPEN / ACKED / RECOVERED
 
     private LocalDateTime firstOccurredAt;   // 首次发生时间
     private LocalDateTime lastOccurredAt;    // 最后发生时间

@@ -1,10 +1,20 @@
 package com.smartlamp.controller;
 
-import com.smartlamp.dto.*;
+import com.smartlamp.dto.AddDeviceRequest;
+import com.smartlamp.dto.ApiResponse;
+import com.smartlamp.dto.ControlRequest;
+import com.smartlamp.dto.ControlResultDTO;
+import com.smartlamp.dto.DeviceDTO;
+import com.smartlamp.dto.DeviceHealthDTO;
+import com.smartlamp.dto.LightDataDTO;
+import com.smartlamp.dto.SwitchLightRequest;
+import com.smartlamp.dto.UpdateDeviceRequest;
+import com.smartlamp.entity.Device;
 import com.smartlamp.entity.DeviceCommand;
 import com.smartlamp.service.DeviceCommandService;
+import com.smartlamp.service.DeviceHealthService;
 import com.smartlamp.service.DeviceService;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -12,113 +22,109 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/devices")
 public class DeviceController {
+    private final DeviceService deviceService;
+    private final DeviceCommandService commandService;
+    private final DeviceHealthService healthService;
 
-    @Autowired
-    private DeviceService deviceService;
+    public DeviceController(DeviceService deviceService, DeviceCommandService commandService,
+                            DeviceHealthService healthService) {
+        this.deviceService = deviceService;
+        this.commandService = commandService;
+        this.healthService = healthService;
+    }
 
-    @Autowired
-    private DeviceCommandService deviceCommandService;
-
-    // GET /api/devices
     @GetMapping
     public ApiResponse<List<DeviceDTO>> listDevices() {
         return ApiResponse.success(deviceService.getAllDeviceDTOs());
     }
 
-    // GET /api/devices/{deviceId}/light
+    @GetMapping("/health/latest")
+    public ApiResponse<List<DeviceHealthDTO>> listLatestHealthReports() {
+        return ApiResponse.success(healthService.getLatestReports());
+    }
+
+    @GetMapping("/{deviceId}/health")
+    public ApiResponse<List<DeviceHealthDTO>> getHealthHistory(@PathVariable String deviceId) {
+        if (deviceService.getDeviceByCode(deviceId) == null) {
+            return ApiResponse.error(404, "设备不存在");
+        }
+        return ApiResponse.success(healthService.getHistory(deviceId));
+    }
+
+    @PostMapping("/{deviceId}/health/evaluate")
+    @PreAuthorize("hasAnyRole('admin','operator')")
+    public ApiResponse<DeviceHealthDTO> evaluateHealth(@PathVariable String deviceId) {
+        DeviceHealthDTO report = healthService.evaluateDeviceHealth(deviceId);
+        return report == null
+                ? ApiResponse.error(404, "设备不存在")
+                : ApiResponse.success(report);
+    }
+
     @GetMapping("/{deviceId}/light")
     public ApiResponse<LightDataDTO> getLight(@PathVariable String deviceId) {
         LightDataDTO light = deviceService.getCurrentLight(deviceId);
-        if (light == null) {
-            return ApiResponse.error(400, "设备不存在");
-        }
-        return ApiResponse.success(light);
+        return light == null ? ApiResponse.error(400, "设备不存在") : ApiResponse.success(light);
     }
 
-    // POST /api/devices/{deviceId}/switch
     @PostMapping("/{deviceId}/switch")
-    public ApiResponse<String> switchLight(@PathVariable String deviceId,
-                                           @RequestBody SwitchLightRequest request) {
-        try {
-            String commandId = deviceCommandService.dispatchCommand(deviceId, request.isOn() ? "ON" : "OFF");
-            return ApiResponse.success(commandId);
-        } catch (IllegalArgumentException e) {
-            return ApiResponse.error(400, e.getMessage());
-        } catch (IllegalStateException e) {
-            return ApiResponse.error(400, e.getMessage());
-        }
+    @PreAuthorize("hasAnyRole('admin','operator')")
+    public ApiResponse<ControlResultDTO> switchLight(@PathVariable String deviceId,
+                                                      @RequestBody SwitchLightRequest request) {
+        DeviceCommand command = commandService.dispatch(deviceId, request.isOn() ? "ON" : "OFF", "MANUAL");
+        return ApiResponse.success(commandService.toResult(command, "MANUAL"));
     }
 
-    // POST /api/devices/{deviceId}/control —— 兼容旧契约
-    @PostMapping("/{deviceId}/control")
-    public ApiResponse<String> control(@PathVariable String deviceId,
-                                       @RequestBody DeviceControlRequest request) {
-        try {
-            String action = request.getAction();
-            if (action == null || !action.matches("ON|OFF")) {
-                return ApiResponse.error(400, "action 必须为 ON 或 OFF");
-            }
-            String commandId = deviceCommandService.dispatchCommand(deviceId, action);
-            return ApiResponse.success(commandId);
-        } catch (IllegalArgumentException e) {
-            return ApiResponse.error(400, e.getMessage());
-        } catch (IllegalStateException e) {
-            return ApiResponse.error(400, e.getMessage());
-        }
-    }
-
-    // GET /api/devices/commands/{commandId}
-    @GetMapping("/commands/{commandId}")
-    public ApiResponse<DeviceCommand> getCommandStatus(@PathVariable String commandId) {
-        DeviceCommand command = deviceCommandService.getCommandStatus(commandId);
-        if (command == null) {
-            return ApiResponse.error(400, "指令不存在");
-        }
-        return ApiResponse.success(command);
-    }
-
-    // POST /api/devices 添加设备
     @PostMapping
+    @PreAuthorize("hasAnyRole('admin','operator')")
     public ApiResponse<DeviceDTO> addDevice(@RequestBody AddDeviceRequest request) {
         if (request.getCode() == null || request.getCode().isBlank()) {
             return ApiResponse.error(400, "设备编号不能为空");
         }
-        if (request.getLongitude() == null || request.getLatitude() == null ||
-                request.getLongitude() < -180 || request.getLongitude() > 180 ||
-                request.getLatitude() < -90 || request.getLatitude() > 90) {
+        if (request.getLongitude() == null || request.getLatitude() == null
+                || request.getLongitude() < -180 || request.getLongitude() > 180
+                || request.getLatitude() < -90 || request.getLatitude() > 90) {
             return ApiResponse.error(400, "请输入有效经纬度：经度 -180 至 180，纬度 -90 至 90");
         }
-        DeviceDTO dto = deviceService.addDevice(request);
-        if (dto == null) {
-            return ApiResponse.error(400, "设备编号已存在");
-        }
-        return ApiResponse.success(dto);
+        Device device = deviceService.addDevice(request.getCode(), request.getName(), request.getLocation(), request.getBinding(),
+                request.getLongitude(), request.getLatitude());
+        return device == null
+                ? ApiResponse.error(400, "设备编号已存在")
+                : ApiResponse.success(deviceService.toDTO(device));
     }
 
-    // PATCH /api/devices/{deviceId} 更新设备
     @PatchMapping("/{deviceId}")
+    @PreAuthorize("hasAnyRole('admin','operator')")
     public ApiResponse<DeviceDTO> updateDevice(@PathVariable String deviceId,
-                                               @RequestBody UpdateDeviceRequest request) {
-        if (request.getLongitude() != null && (request.getLongitude() < -180 || request.getLongitude() > 180)) {
-            return ApiResponse.error(400, "经度必须在 -180 至 180 之间");
+                                                @RequestBody UpdateDeviceRequest request) {
+        if ((request.getLongitude() != null && (request.getLongitude() < -180 || request.getLongitude() > 180))
+                || (request.getLatitude() != null && (request.getLatitude() < -90 || request.getLatitude() > 90))) {
+            return ApiResponse.error(400, "经纬度超出有效范围");
         }
-        if (request.getLatitude() != null && (request.getLatitude() < -90 || request.getLatitude() > 90)) {
-            return ApiResponse.error(400, "纬度必须在 -90 至 90 之间");
-        }
-        DeviceDTO dto = deviceService.updateDevice(deviceId, request);
-        if (dto == null) {
-            return ApiResponse.error(400, "设备不存在");
-        }
-        return ApiResponse.success(dto);
+        Device device = deviceService.updateDevice(deviceId, request.getName(), request.getLocation(), request.getBinding(),
+                request.getBound(), request.getLongitude(), request.getLatitude());
+        return device == null
+                ? ApiResponse.error(404, "device not found")
+                : ApiResponse.success(deviceService.toDTO(device));
     }
 
-    // DELETE /api/devices/{deviceId} 解绑设备
+    @PostMapping("/{deviceId}/control")
+    @PreAuthorize("hasAnyRole('admin','operator')")
+    public ApiResponse<ControlResultDTO> control(@PathVariable String deviceId,
+                                                  @RequestBody ControlRequest request) {
+        DeviceCommand command = commandService.dispatch(deviceId, request.getAction(), "MANUAL");
+        return ApiResponse.success(commandService.toResult(command, "MANUAL"));
+    }
+
+    @GetMapping("/commands/{commandId}")
+    public ApiResponse<ControlResultDTO> getCommandStatus(@PathVariable String commandId) {
+        return ApiResponse.success(commandService.toResult(commandService.find(commandId), "MANUAL"));
+    }
+
     @DeleteMapping("/{deviceId}")
+    @PreAuthorize("hasAnyRole('admin','operator')")
     public ApiResponse<Void> removeDevice(@PathVariable String deviceId) {
-        boolean success = deviceService.removeDevice(deviceId);
-        if (!success) {
-            return ApiResponse.error(400, "设备不存在");
-        }
-        return ApiResponse.success(null);
+        return deviceService.removeDevice(deviceId)
+                ? ApiResponse.success(null)
+                : ApiResponse.error(400, "设备不存在");
     }
 }

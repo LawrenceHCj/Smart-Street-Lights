@@ -4,7 +4,10 @@ import lombok.Data;
 
 @Data
 public class UpdateDeviceRequest {
-    private String location;   // 可选
-    private Double longitude;  // 可选，范围 -180 ~ 180
-    private Double latitude;   // 可选，范围 -90 ~ 90
+    private String name;
+    private String location;
+    private String binding;
+    private Boolean bound;
+    private Double longitude;
+    private Double latitude;
 }

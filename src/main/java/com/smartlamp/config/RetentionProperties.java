@@ -10,8 +10,8 @@ public class RetentionProperties {
     private int deadLetterDays = 7;
 
     public int getLightPointDays() { return lightPointDays; }
-    public void setLightPointDays(int lightPointDays) { this.lightPointDays = lightPointDays; }
+    public void setLightPointDays(int lightPointDays) { this.lightPointDays = Math.max(1, lightPointDays); }
 
     public int getDeadLetterDays() { return deadLetterDays; }
-    public void setDeadLetterDays(int deadLetterDays) { this.deadLetterDays = deadLetterDays; }
+    public void setDeadLetterDays(int deadLetterDays) { this.deadLetterDays = Math.max(1, deadLetterDays); }
 }

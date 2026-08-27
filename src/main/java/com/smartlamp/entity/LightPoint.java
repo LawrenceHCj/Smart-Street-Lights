@@ -7,23 +7,35 @@ import java.time.LocalDateTime;
 
 @Data
 @Entity
-@Table(name = "light_point", indexes = {
-        @Index(name = "idx_device_ts", columnList = "device_code,ts", unique = true)
-})
+@Table(
+        name = "light_point",
+        indexes = @Index(name = "idx_light_point_device_ts", columnList = "device_code, ts"),
+        uniqueConstraints = @UniqueConstraint(name = "uk_light_point_device_ts", columnNames = {"device_code", "ts"})
+)
 public class LightPoint {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
+    @Column(name = "device_code", nullable = false)
     private String deviceCode;   // 设备编号
 
     @Column(nullable = false)
     private Double lux;          // 光照值
 
-    @Column(nullable = false)
-    private Long ts;             // 毫秒时间戳（设备采集时间）
+    private Double temperature;
+    private Double voltage;
+    private Double current;
+    private Double power;
+    private Double energy;
+    private String lampStatus;
 
-    private LocalDateTime createdAt;          // 入库时间
-    private LocalDateTime serverReceivedAt;   // 服务器接收时间（新增）
+    @Column(name = "ts", nullable = false)
+    private Long ts;             // 毫秒时间戳
+
+    @Lob
+    @Column(columnDefinition = "LONGTEXT")
+    private String rawPayload;
+
+    private LocalDateTime createdAt;
 }

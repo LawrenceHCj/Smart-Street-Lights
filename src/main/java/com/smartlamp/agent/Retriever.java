@@ -1,62 +1,70 @@
 package com.smartlamp.agent;
 
-import com.smartlamp.dto.SourceItem;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-import java.util.*;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
+// 知识检索器（中文分词 + BM25，零外部依赖）：对 title/keywords/category/content 四字段建倒排索引
+// 并按 BM25 加权打分（见 Bm25Index）；词元化由 Segmenter 完成（领域词典最大匹配 + 二字切分兜底）。
+// 结果过滤规则：命中至少 2 个不同词元，或任一命中来自 keywords 人工词表——避免单个噪声 bigram
+// 造成误召回（如"今天天气怎么样"不会命中知识库）。
+// 后续升级向量检索时保持 retrieve 接口不变，仅替换本实现。
 @Component
 public class Retriever {
 
-    private final BM25Retriever bm25 = new BM25Retriever();
+    private static final int DEFAULT_LIMIT = 2;
+    private static final int MIN_DISTINCT_TOKENS = 2;
 
-    // 模拟知识库：标题 -> 内容（后续可替换为数据库或文件）
-    private final Map<String, String> knowledgeBase = new LinkedHashMap<>();
-    {
-        knowledgeBase.put("路灯常见故障排查手册", "供电异常 通信模块故障 传感器损坏 网关离线 路灯不亮 常见原因");
-        knowledgeBase.put("设备维护指南", "定期巡检 清洁灯罩 检查线路 预防性维护 电压电流检测");
-        knowledgeBase.put("智能调光策略", "光照阈值 自动控制 节能 开灯 关灯 亮度调节");
+    // 领域补充词表：keywords 之外的高频口语/领域词（与知识库 keywords 合并构成分词词典；单字不入词典，由二字切分覆盖）
+    private static final Set<String> EXTRA_DICTIONARY =
+            Set.of("路灯", "排查", "开关", "在线", "光照", "配置", "设备");
+
+    @Autowired
+    private KnowledgeBase knowledgeBase;
+
+    private volatile Bm25Index index;
+
+    // 一条匹配结果：知识条目 + BM25 相关度分
+    public record KbMatch(KnowledgeEntry entry, double score) {
     }
 
-    public List<SourceItem> retrieve(String question) {
-        int totalDocs = knowledgeBase.size();
-        double avgLength = knowledgeBase.values().stream()
-                .mapToInt(doc -> tokenize(doc).length)
-                .average().orElse(1.0);
+    public List<KbMatch> retrieve(String question) {
+        return retrieve(question, DEFAULT_LIMIT);
+    }
 
-        Map<String, Integer> docFreq = computeDocFreq(knowledgeBase.values());
+    public List<KbMatch> retrieve(String question, int limit) {
+        String text = question == null ? "" : question.trim();
+        if (text.isEmpty()) return List.of();
 
-        List<Map.Entry<String, Double>> scored = new ArrayList<>();
-        for (Map.Entry<String, String> entry : knowledgeBase.entrySet()) {
-            String doc = entry.getValue();
-            int docLength = tokenize(doc).length;
-            double score = bm25.score(question, doc, docFreq, totalDocs, docLength, avgLength);
-            scored.add(new AbstractMap.SimpleEntry<>(entry.getKey(), score));
-        }
+        Bm25Index idx = ensureIndex();
+        List<String> tokens = idx.segmenter().tokenize(text);
+        if (tokens.isEmpty()) return List.of();
 
-        scored.sort((a, b) -> Double.compare(b.getValue(), a.getValue()));
+        // 过滤噪声（单噪声词元/无词表命中不召回）→ 按相关度取 top-N
+        return idx.search(tokens).stream()
+                .filter(hit -> hit.keywordHit() || hit.distinctTokens() >= MIN_DISTINCT_TOKENS)
+                .limit(limit)
+                .map(hit -> new KbMatch(hit.entry(), hit.score()))
+                .toList();
+    }
 
-        List<SourceItem> sources = new ArrayList<>();
-        for (Map.Entry<String, Double> item : scored) {
-            if (item.getValue() > 0) {
-                sources.add(new SourceItem(item.getKey(), "knowledge", item.getValue()));
+    // 首次检索时构建索引：词典 = 知识库全部 keywords + 领域补充词表
+    private Bm25Index ensureIndex() {
+        if (index == null) {
+            synchronized (this) {
+                if (index == null) {
+                    List<KnowledgeEntry> entries = knowledgeBase.findAll();
+                    Set<String> dictionary = new HashSet<>(EXTRA_DICTIONARY);
+                    for (KnowledgeEntry entry : entries) {
+                        dictionary.addAll(entry.getKeywords());
+                    }
+                    index = new Bm25Index(entries, new Segmenter(dictionary));
+                }
             }
         }
-        return sources;
-    }
-
-    private String[] tokenize(String text) {
-        return text.toLowerCase().split("[\\s，。！？；:,.!?;]+");
-    }
-
-    private Map<String, Integer> computeDocFreq(Collection<String> docs) {
-        Map<String, Integer> df = new HashMap<>();
-        for (String doc : docs) {
-            Set<String> unique = new HashSet<>(Arrays.asList(tokenize(doc)));
-            for (String term : unique) {
-                df.merge(term, 1, Integer::sum);
-            }
-        }
-        return df;
+        return index;
     }
 }

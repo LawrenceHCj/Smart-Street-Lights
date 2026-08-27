@@ -2,8 +2,6 @@ package com.smartlamp.service;
 
 import com.smartlamp.dto.UserDTO;
 import com.smartlamp.entity.SysUser;
-import com.smartlamp.entity.enums.UserRole;
-import com.smartlamp.entity.enums.UserStatus;
 import com.smartlamp.repository.SysUserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -29,8 +27,8 @@ public class UserService {
                 .map(user -> new UserDTO(
                         user.getId(),
                         user.getUsername(),
-                        user.getRole().name(),          // 枚举转字符串
-                        user.getStatus().name(),         // 枚举转字符串
+                        user.getRole(),
+                        user.getStatus(),
                         user.getCreatedAt() == null ? null :
                                 user.getCreatedAt().toInstant(ZoneOffset.UTC).toEpochMilli()
                 ))
@@ -45,24 +43,29 @@ public class UserService {
         SysUser user = new SysUser();
         user.setUsername(username);
         user.setPassword(passwordEncoder.encode(password));
-        user.setRole(UserRole.valueOf(role.toUpperCase()));   // 字符串转枚举
-        user.setStatus(UserStatus.ENABLED);
+        user.setRole(role);
+        user.setStatus("ENABLED");
         user.setCreatedAt(LocalDateTime.now());
         sysUserRepository.save(user);
         return true;
     }
 
     // 修改用户角色
-    public boolean updateUserRole(Long id, String newRole) {
+    public boolean updateUserRole(Long id, String newRole, String actorUsername, boolean actorIsAdmin) {
+        if (!actorIsAdmin || actorUsername == null || actorUsername.isBlank()) {
+            return false;
+        }
         SysUser user = sysUserRepository.findById(id).orElse(null);
         if (user == null) {
             return false;
         }
-        // 保护 admin 用户不被修改
-        if (UserRole.ADMIN.equals(user.getRole())) {
+        // 管理员也不能修改自己的角色，避免当前会话权限与数据库角色不一致。
+        if (actorUsername.equals(user.getUsername())
+                || "admin".equals(user.getUsername())
+                || "admin".equals(user.getRole())) {
             return false;
         }
-        user.setRole(UserRole.valueOf(newRole.toUpperCase()));
+        user.setRole(newRole);
         sysUserRepository.save(user);
         return true;
     }
@@ -74,7 +77,7 @@ public class UserService {
             return false;
         }
         // 保护 admin 用户不被删除
-        if (UserRole.ADMIN.equals(user.getRole())) {
+        if ("admin".equals(user.getUsername()) || "admin".equals(user.getRole())) {
             return false;
         }
         sysUserRepository.delete(user);

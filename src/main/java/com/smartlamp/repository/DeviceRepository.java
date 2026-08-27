@@ -6,4 +6,5 @@ import java.util.Optional;
 
 public interface DeviceRepository extends JpaRepository<Device, Long> {
     Optional<Device> findByCode(String code);
+    long countByLampStatus(String lampStatus);
 }

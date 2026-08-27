@@ -7,11 +7,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.LocalDateTime;
 
 @Component
 public class DataRetentionTask {
+    private static final Logger log = LoggerFactory.getLogger(DataRetentionTask.class);
 
     @Autowired
     private LightPointRepository lightPointRepository;
@@ -34,6 +37,7 @@ public class DataRetentionTask {
         LocalDateTime deadLetterCutoff = LocalDateTime.now().minusDays(retentionProperties.getDeadLetterDays());
         mqttDeadLetterRepository.deleteByReceivedAtBefore(deadLetterCutoff);
 
-        System.out.println("数据保留清理任务完成");
+        log.info("数据保留清理任务完成: telemetryDays={}, deadLetterDays={}",
+                retentionProperties.getLightPointDays(), retentionProperties.getDeadLetterDays());
     }
 }
