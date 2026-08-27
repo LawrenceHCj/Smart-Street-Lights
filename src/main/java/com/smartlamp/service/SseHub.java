@@ -1,39 +1,57 @@
 package com.smartlamp.service;
 
+import com.smartlamp.dto.SummaryDTO;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
-/** Streams database-backed summaries to clients; it replaces the Node process-local SSE hub. */
 @Service
 public class SseHub {
-    private final CopyOnWriteArrayList<SseEmitter> emitters = new CopyOnWriteArrayList<>();
-    private final SummaryService summaryService;
 
-    public SseHub(SummaryService summaryService) { this.summaryService = summaryService; }
+    @Autowired
+    private DashboardService dashboardService;
 
-    public SseEmitter subscribe() {
-        SseEmitter emitter = new SseEmitter(0L);
+    private final List<SseEmitter> emitters = new CopyOnWriteArrayList<>();
+
+    private static final int MAX_CONNECTIONS = 50;
+
+    public SseEmitter register() {
+        if (emitters.size() >= MAX_CONNECTIONS) {
+            throw new IllegalStateException("SSE 连接数已达上限");
+        }
+        SseEmitter emitter = new SseEmitter(60_000L);
         emitters.add(emitter);
         emitter.onCompletion(() -> emitters.remove(emitter));
         emitter.onTimeout(() -> emitters.remove(emitter));
-        send(emitter);
+        emitter.onError((e) -> emitters.remove(emitter));
         return emitter;
     }
 
-    @Scheduled(fixedDelay = 5000)
-    public void broadcast() {
-        emitters.forEach(this::send);
+    // 兼容旧调用：subscribe 等同于 register
+    public SseEmitter subscribe() {
+        return register();
     }
 
-    private void send(SseEmitter emitter) {
-        try {
-            emitter.send(SseEmitter.event().name("summary").data(summaryService.getSummary()));
-        } catch (IOException | IllegalStateException ex) {
-            emitters.remove(emitter);
+    @Scheduled(fixedRate = 5000)
+    public void broadcast() {
+        if (emitters.isEmpty()) {
+            return;
+        }
+        SummaryDTO summary = dashboardService.getSummary();
+        for (SseEmitter emitter : emitters) {
+            try {
+                emitter.send(SseEmitter.event()
+                        .name("summary")
+                        .data(summary));
+            } catch (IOException e) {
+                emitter.completeWithError(e);
+                emitters.remove(emitter);
+            }
         }
     }
 }

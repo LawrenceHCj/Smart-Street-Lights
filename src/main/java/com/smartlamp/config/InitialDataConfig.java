@@ -2,28 +2,50 @@ package com.smartlamp.config;
 
 import com.smartlamp.entity.SysUser;
 import com.smartlamp.repository.SysUserRepository;
-import org.springframework.boot.ApplicationRunner;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Component;
 
-/** Creates the documented development administrator only when the database is empty. */
-@Configuration
-public class InitialDataConfig {
+import java.time.LocalDateTime;
+import java.util.UUID;
 
-    @Bean
-    ApplicationRunner initializeDefaultAdmin(SysUserRepository userRepository, PasswordEncoder passwordEncoder) {
-        return args -> {
-            if (userRepository.existsByUsername("admin")) {
-                return;
-            }
-            SysUser admin = new SysUser();
-            admin.setUsername("admin");
-            admin.setPassword(passwordEncoder.encode("123456"));
-            admin.setRole("admin");
-            admin.setStatus("ENABLED");
-            admin.setCreatedAt(java.time.LocalDateTime.now());
-            userRepository.save(admin);
-        };
+@Component
+public class InitialDataConfig implements CommandLineRunner {
+
+    @Autowired
+    private SysUserRepository sysUserRepository;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    @Value("${admin.default.password:}")
+    private String adminDefaultPassword;
+
+    @Override
+    public void run(String... args) {
+        if (sysUserRepository.findByUsername("admin").isPresent()) {
+            return;
+        }
+
+        String password = adminDefaultPassword;
+        if (password == null || password.isEmpty()) {
+            password = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+            System.out.println("==============================================");
+            System.out.println(" 初始管理员账号已创建");
+            System.out.println(" 用户名: admin");
+            System.out.println(" 密码: " + password);
+            System.out.println(" 请立即登录并修改密码");
+            System.out.println("==============================================");
+        }
+
+        SysUser admin = new SysUser();
+        admin.setUsername("admin");
+        admin.setPassword(passwordEncoder.encode(password));
+        admin.setRole("ADMIN");        // 字符串
+        admin.setStatus("ENABLED");    // 字符串
+        admin.setCreatedAt(LocalDateTime.now());
+        sysUserRepository.save(admin);
     }
 }

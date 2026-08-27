@@ -17,6 +17,7 @@ import java.util.regex.Pattern;
 public class MqttIngestionService {
     private static final Pattern TOPIC_PATTERN = Pattern.compile("^device/([^/]+)/(data|heartbeat|cmd_ack)$");
     private static final int MAX_PAYLOAD_LENGTH = 65_535;
+    private static final long MAX_TIME_SKEW_MS = 5 * 60 * 1000;
 
     private final DeviceRepository deviceRepository;
     private final LightPointRepository lightPointRepository;
@@ -72,18 +73,40 @@ public class MqttIngestionService {
         }
 
         long ts = readTimestamp(json.get("ts"));
+        long now = System.currentTimeMillis();
+
+        // 先检查时间偏差过大
+        if (ts > now + MAX_TIME_SKEW_MS || ts < now - MAX_TIME_SKEW_MS) {
+            throw new IllegalArgumentException("时间戳偏差过大，忽略消息");
+        }
+
         Device device = deviceRepository.findByCode(deviceId).orElse(null);
         boolean recoveredFromOffline = device != null && "OFFLINE".equals(device.getStatus());
-        if (device == null) device = newDevice(deviceId);
+        if (device == null) {
+            device = newDevice(deviceId);
+        }
 
         if ("data".equals(messageType)) {
+            // 旧遥测忽略，并打印日志
+            if (device.getLastTelemetryAt() != null && ts <= device.getLastTelemetryAt()) {
+                System.out.println("忽略旧遥测消息: " + deviceId + " ts=" + ts);
+                return;
+            }
             ingestTelemetry(device, json, payload, ts);
         } else {
+            // 旧心跳忽略，并打印日志
+            if (device.getLastSeen() != null && ts <= device.getLastSeen()) {
+                System.out.println("忽略旧心跳: " + deviceId + " ts=" + ts);
+                return;
+            }
             device.setLastSeen(ts);
             device.setStatus("ONLINE");
             deviceRepository.save(device);
         }
-        if (recoveredFromOffline) alarmService.recoverOfflineAlarms(deviceId);
+
+        if (recoveredFromOffline) {
+            alarmService.recoverOfflineAlarms(deviceId);
+        }
     }
 
     private void ingestTelemetry(Device device, JsonNode json, String rawPayload, long ts) {
@@ -105,10 +128,10 @@ public class MqttIngestionService {
         device.setLatestEnergy(energy);
         if (lampStatus != null) device.setLampStatus(lampStatus);
         device.setLastSeen(ts);
+        device.setLastTelemetryAt(ts);
         device.setStatus("ONLINE");
         deviceRepository.save(device);
 
-        // QoS 1 可能重复投递；以设备编号 + 采集时间戳保证幂等。
         if (lightPointRepository.existsByDeviceCodeAndTs(device.getCode(), ts)) return;
 
         LightPoint point = new LightPoint();

@@ -31,5 +31,6 @@ public class Device {
     private Double latestPower;
     private Double latestEnergy;
     private Long lastSeen;
+    private Long lastTelemetryAt;   // 最近一次遥测数据采集时间戳（毫秒）
     private LocalDateTime createdAt;
 }

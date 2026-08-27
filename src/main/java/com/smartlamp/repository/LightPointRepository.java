@@ -3,6 +3,7 @@ package com.smartlamp.repository;
 import com.smartlamp.entity.LightPoint;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.awt.print.Pageable;
 import java.util.List;
 
 public interface LightPointRepository extends JpaRepository<LightPoint, Long> {
@@ -12,4 +13,5 @@ public interface LightPointRepository extends JpaRepository<LightPoint, Long> {
     List<LightPoint> findAllByOrderByTsDesc(org.springframework.data.domain.Pageable pageable);
     void deleteByDeviceCode(String deviceCode);
     void deleteByTsBefore(long ts);
+    List<LightPoint> findAllByOrderByTsDesc(Pageable pageable);
 }

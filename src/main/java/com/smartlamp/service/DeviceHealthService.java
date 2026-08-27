@@ -10,7 +10,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
@@ -32,61 +31,64 @@ public class DeviceHealthService {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    /**
-     * 核心算分逻辑：白盒规则引擎
-     */
     public DeviceHealthReport evaluateDeviceHealth(Device device) {
         int score = 100;
         ArrayNode anomalyDetails = objectMapper.createArrayNode();
 
-        try {
-            // 1. 精准匹配 Device.java 的 latest 系列字段
-            Double power = getSafeDouble(device.getLatestPower());
-            Double temperature = getSafeDouble(device.getLatestTemperature());
-            Double current = getSafeDouble(device.getLatestCurrent());
-            Double voltage = getSafeDouble(device.getLatestVoltage());
-            String lampStatus = device.getLampStatus();
-
-            // 规则 1：继电器或状态回传异常
-            if (power > 0.5 && "OFF".equalsIgnoreCase(lampStatus)) {
-                score -= 15;
-                addAnomaly(anomalyDetails, "继电器/状态回传异常", "功率不为零(" + power + "W)但系统状态为OFF", 15);
-            }
-
-            // 规则 2：过热预警
-            if (temperature > 65.0) {
-                score -= 10;
-                addAnomaly(anomalyDetails, "过热预警", "当前温度(" + temperature + "℃)超过安全阈值", 10);
-            }
-
-            // 规则 3：疑似驱动老化
-            if (current > 5.0) {
-                score -= 10;
-                addAnomaly(anomalyDetails, "疑似驱动老化", "工作电流(" + current + "A)异常偏高", 10);
-            }
-
-            // 规则 4：供电质量异常 (偏离标准 220V 市电范围)
-            if (voltage > 0 && (voltage < 200.0 || voltage > 240.0)) {
-                score -= 10;
-                addAnomaly(anomalyDetails, "供电质量异常", "当前电压(" + voltage + "V)偏离标准范围", 10);
-            }
-
-            score = Math.max(0, score);
-
-            // 2. 组装最终体检报告
-            DeviceHealthReport report = new DeviceHealthReport();
-            report.setDeviceCode(device.getCode());
-            report.setHealthScore(score);
-            report.setAnomalyDetails(anomalyDetails.toString());
-            report.setCreatedAt(LocalDateTime.now());
-
-            // 3. 落库保存并返回
-            return healthReportRepository.save(report);
-
-        } catch (Exception e) {
-            log.error("设备 {} 健康评估执行崩溃，原因: {}", device.getCode(), e.getMessage());
+        // 数据有效性检查（直接返回 null，代表无法评分，由控制器转为业务错误）
+        if (device.getLastTelemetryAt() == null) {
+            log.warn("设备 {} 无遥测数据，无法评分", device.getCode());
             return null;
         }
+        long now = System.currentTimeMillis();
+        long maxDataAgeMs = 5 * 60 * 1000;
+        if (now - device.getLastTelemetryAt() > maxDataAgeMs) {
+            log.warn("设备 {} 遥测数据已过期，无法评分", device.getCode());
+            return null;
+        }
+
+        if (device.getLatestTemperature() == null && device.getLatestCurrent() == null
+                && device.getLatestVoltage() == null && device.getLatestPower() == null) {
+            log.warn("设备 {} 缺少关键遥测指标，无法评分", device.getCode());
+            return null;
+        }
+
+        // 评分子逻辑不再捕获异常，让数据库或其他异常自然抛出
+        Double power = device.getLatestPower();
+        Double temperature = device.getLatestTemperature();
+        Double current = device.getLatestCurrent();
+        Double voltage = device.getLatestVoltage();
+        String lampStatus = device.getLampStatus();
+
+        if (power != null && power > 0.5 && "OFF".equalsIgnoreCase(lampStatus)) {
+            score -= 15;
+            addAnomaly(anomalyDetails, "继电器/状态回传异常", "功率不为零(" + power + "W)但系统状态为OFF", 15);
+        }
+
+        if (temperature != null && temperature > 65.0) {
+            score -= 10;
+            addAnomaly(anomalyDetails, "过热预警", "当前温度(" + temperature + "℃)超过安全阈值", 10);
+        }
+
+        if (current != null && current > 5.0) {
+            score -= 10;
+            addAnomaly(anomalyDetails, "疑似驱动老化", "工作电流(" + current + "A)异常偏高", 10);
+        }
+
+        if (voltage != null && voltage > 0 && (voltage < 200.0 || voltage > 240.0)) {
+            score -= 10;
+            addAnomaly(anomalyDetails, "供电质量异常", "当前电压(" + voltage + "V)偏离标准范围", 10);
+        }
+
+        score = Math.max(0, score);
+
+        DeviceHealthReport report = new DeviceHealthReport();
+        report.setDeviceCode(device.getCode());
+        report.setHealthScore(score);
+        report.setAnomalyDetails(anomalyDetails.toString());
+        report.setCreatedAt(LocalDateTime.now());
+
+        return healthReportRepository.save(report);
     }
 
     public DeviceHealthDTO evaluateDeviceHealth(String deviceCode) {
@@ -142,15 +144,5 @@ public class DeviceHealthService {
         node.put("reason", reason);
         node.put("deduct", deduct);
         array.add(node);
-    }
-
-    private Double getSafeDouble(Object value) {
-        if (value == null) return 0.0;
-        if (value instanceof Number) return ((Number) value).doubleValue();
-        try {
-            return Double.parseDouble(value.toString());
-        } catch (NumberFormatException e) {
-            return 0.0;
-        }
     }
 }

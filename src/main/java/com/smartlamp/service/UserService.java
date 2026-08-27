@@ -21,36 +21,33 @@ public class UserService {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
-    // 获取所有用户
     public List<UserDTO> getAllUsers() {
         return sysUserRepository.findAll().stream()
                 .map(user -> new UserDTO(
                         user.getId(),
                         user.getUsername(),
-                        user.getRole(),
-                        user.getStatus(),
+                        user.getRole(),      // 字符串
+                        user.getStatus(),     // 字符串
                         user.getCreatedAt() == null ? null :
                                 user.getCreatedAt().toInstant(ZoneOffset.UTC).toEpochMilli()
                 ))
                 .collect(Collectors.toList());
     }
 
-    // 新增用户
     public boolean createUser(String username, String password, String role) {
         if (sysUserRepository.existsByUsername(username)) {
-            return false; // 用户名已存在
+            return false;
         }
         SysUser user = new SysUser();
         user.setUsername(username);
         user.setPassword(passwordEncoder.encode(password));
-        user.setRole(role);
-        user.setStatus("ENABLED");
+        user.setRole(role);                  // 字符串
+        user.setStatus("ENABLED");           // 字符串
         user.setCreatedAt(LocalDateTime.now());
         sysUserRepository.save(user);
         return true;
     }
 
-    // 修改用户角色
     public boolean updateUserRole(Long id, String newRole, String actorUsername, boolean actorIsAdmin) {
         if (!actorIsAdmin || actorUsername == null || actorUsername.isBlank()) {
             return false;
@@ -59,24 +56,21 @@ public class UserService {
         if (user == null) {
             return false;
         }
-        // 管理员也不能修改自己的角色，避免当前会话权限与数据库角色不一致。
         if (actorUsername.equals(user.getUsername())
                 || "admin".equals(user.getUsername())
-                || "admin".equals(user.getRole())) {
+                || "admin".equals(user.getRole())) {   // 字符串比较
             return false;
         }
-        user.setRole(newRole);
+        user.setRole(newRole);               // 字符串
         sysUserRepository.save(user);
         return true;
     }
 
-    // 删除用户
     public boolean deleteUser(Long id) {
         SysUser user = sysUserRepository.findById(id).orElse(null);
         if (user == null) {
             return false;
         }
-        // 保护 admin 用户不被删除
         if ("admin".equals(user.getUsername()) || "admin".equals(user.getRole())) {
             return false;
         }

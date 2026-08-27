@@ -37,9 +37,17 @@ public class DeviceCommandService {
     public DeviceCommand dispatch(String deviceId, String action, String mode) {
         Device device = deviceRepository.findByCode(deviceId)
                 .orElseThrow(() -> new BadRequestException("设备不存在: " + deviceId));
+
+        // 检查设备是否绑定
         if (!Boolean.TRUE.equals(device.getBound())) {
             throw new BadRequestException("设备未绑定: " + deviceId);
         }
+
+        // ========== 新增：检查设备是否在线 ==========
+        if (device.getStatus() == null || !"ONLINE".equalsIgnoreCase(device.getStatus())) {
+            throw new BadRequestException("设备离线，无法下发指令");
+        }
+        // ===========================================
 
         String normalizedAction = normalizeAction(action);
         LocalDateTime now = LocalDateTime.now();

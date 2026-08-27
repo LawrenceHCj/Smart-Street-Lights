@@ -19,10 +19,11 @@ public class UserDetailsServiceImpl implements UserDetailsService {
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         SysUser user = sysUserRepository.findByUsername(username)
                 .orElseThrow(() -> new UsernameNotFoundException("用户不存在"));
+
         return User.withUsername(user.getUsername())
                 .password(user.getPassword())
-                .roles(user.getRole())
-                .disabled(!"ENABLED".equals(user.getStatus()))
+                .roles(user.getRole())                         // 字符串
+                .disabled(!"ENABLED".equals(user.getStatus())) // 字符串比较
                 .build();
     }
 }

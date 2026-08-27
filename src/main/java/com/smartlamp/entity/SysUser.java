@@ -20,10 +20,10 @@ public class SysUser {
     private String password;
 
     @Column(nullable = false)
-    private String role;
+    private String role;     // 字符串类型
 
     @Column(nullable = false)
-    private String status;   // ENABLED / DISABLED
+    private String status;   // 字符串类型
 
     private LocalDateTime createdAt;
 }

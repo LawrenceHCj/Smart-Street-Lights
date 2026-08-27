@@ -52,11 +52,20 @@ public class DeviceController {
     }
 
     @PostMapping("/{deviceId}/health/evaluate")
-    @PreAuthorize("hasAnyRole('admin','operator')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ApiResponse<DeviceHealthDTO> evaluateHealth(@PathVariable String deviceId) {
+        // 1. 先检查设备是否存在
+        Device device = deviceService.getDeviceByCode(deviceId);
+        if (device == null) {
+            return ApiResponse.error(404, "设备不存在");
+        }
+
+        // 2. 尝试评分
         DeviceHealthDTO report = healthService.evaluateDeviceHealth(deviceId);
+
+        // 3. 评分结果为空 -> 数据不足
         return report == null
-                ? ApiResponse.error(404, "设备不存在")
+                ? ApiResponse.error(400, "数据不足，无法评分")
                 : ApiResponse.success(report);
     }
 
@@ -67,15 +76,15 @@ public class DeviceController {
     }
 
     @PostMapping("/{deviceId}/switch")
-    @PreAuthorize("hasAnyRole('admin','operator')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ApiResponse<ControlResultDTO> switchLight(@PathVariable String deviceId,
-                                                      @RequestBody SwitchLightRequest request) {
+                                                     @RequestBody SwitchLightRequest request) {
         DeviceCommand command = commandService.dispatch(deviceId, request.isOn() ? "ON" : "OFF", "MANUAL");
         return ApiResponse.success(commandService.toResult(command, "MANUAL"));
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('admin','operator')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ApiResponse<DeviceDTO> addDevice(@RequestBody AddDeviceRequest request) {
         if (request.getCode() == null || request.getCode().isBlank()) {
             return ApiResponse.error(400, "设备编号不能为空");
@@ -93,9 +102,9 @@ public class DeviceController {
     }
 
     @PatchMapping("/{deviceId}")
-    @PreAuthorize("hasAnyRole('admin','operator')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ApiResponse<DeviceDTO> updateDevice(@PathVariable String deviceId,
-                                                @RequestBody UpdateDeviceRequest request) {
+                                               @RequestBody UpdateDeviceRequest request) {
         if ((request.getLongitude() != null && (request.getLongitude() < -180 || request.getLongitude() > 180))
                 || (request.getLatitude() != null && (request.getLatitude() < -90 || request.getLatitude() > 90))) {
             return ApiResponse.error(400, "经纬度超出有效范围");
@@ -108,9 +117,9 @@ public class DeviceController {
     }
 
     @PostMapping("/{deviceId}/control")
-    @PreAuthorize("hasAnyRole('admin','operator')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ApiResponse<ControlResultDTO> control(@PathVariable String deviceId,
-                                                  @RequestBody ControlRequest request) {
+                                                 @RequestBody ControlRequest request) {
         DeviceCommand command = commandService.dispatch(deviceId, request.getAction(), "MANUAL");
         return ApiResponse.success(commandService.toResult(command, "MANUAL"));
     }
@@ -121,7 +130,7 @@ public class DeviceController {
     }
 
     @DeleteMapping("/{deviceId}")
-    @PreAuthorize("hasAnyRole('admin','operator')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ApiResponse<Void> removeDevice(@PathVariable String deviceId) {
         return deviceService.removeDevice(deviceId)
                 ? ApiResponse.success(null)
