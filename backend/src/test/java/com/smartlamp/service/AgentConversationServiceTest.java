@@ -385,4 +385,49 @@ class AgentConversationServiceTest {
                 .contains("设备离线排查") // 只有来源快照
                 .doesNotContain("apiKey").doesNotContain("token").doesNotContain("Authorization");
     }
+
+    // ============ 阶段修复#10：聊天请求幂等 ============
+
+    @Test
+    void 同requestId重试返回首次结果且只保存一次消息() {
+        when(conversationService.getConversation("conv-1")).thenReturn(Optional.of(conversation("conv-1", "admin")));
+        when(conversationService.listMessages("conv-1")).thenReturn(List.of());
+        when(agentService.ask(anyString(), anyList(), any()))
+                .thenReturn(new AskResponse("回答", List.of()));
+
+        AskResponse first = service.chat("问题", "conv-1", "admin", "req-1");
+        AskResponse second = service.chat("问题", "conv-1", "admin", "req-1");
+
+        assertThat(second.getAnswer()).isEqualTo("回答");
+        assertThat(second.getConversationId()).isEqualTo(first.getConversationId());
+        // 只保存一次用户消息与助手消息，LLM 只执行一次
+        verify(conversationService).saveUserMessage("conv-1", "问题");
+        verify(conversationService).saveAssistantMessage(eq("conv-1"), anyString(), anyString());
+        verify(agentService).ask(anyString(), anyList(), any());
+    }
+
+    @Test
+    void requestId为空时不启用幂等每次正常处理() {
+        when(conversationService.getConversation("conv-1")).thenReturn(Optional.of(conversation("conv-1", "admin")));
+        when(conversationService.listMessages("conv-1")).thenReturn(List.of());
+        when(agentService.ask(anyString(), anyList(), any())).thenReturn(new AskResponse("回答", List.of()));
+
+        service.chat("问题", "conv-1", "admin");
+        service.chat("问题", "conv-1", "admin");
+
+        verify(agentService, org.mockito.Mockito.times(2)).ask(anyString(), anyList(), any());
+    }
+
+    // ============ 阶段修复#8：会话历史分页 ============
+
+    @Test
+    void 分页读取历史委托ConversationService() {
+        when(conversationService.getConversation("conv-1")).thenReturn(Optional.of(conversation("conv-1", "admin")));
+        when(conversationService.listMessages("conv-1", 200, 100)).thenReturn(List.of());
+
+        List<AgentMessage> messages = service.getMessages("conv-1", "admin", 200, 100);
+
+        assertThat(messages).isEmpty();
+        verify(conversationService).listMessages("conv-1", 200, 100);
+    }
 }

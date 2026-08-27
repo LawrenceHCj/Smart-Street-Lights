@@ -21,10 +21,14 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-// 阶段17：用户确认/取消业务单测——确认时二次校验 + 完整状态机验证
+// 阶段17/20：用户确认/取消业务单测——归属与角色校验（阶段32 安全修复#6）+ 确认时二次校验 + 状态机验证
 // （纯内存 + Mockito，不依赖 Spring/MySQL/MQTT）
 @ExtendWith(MockitoExtension.class)
 class ActionServiceTest {
+
+    // 测试固定身份：发起者 test-user（admin 角色），发起操作后由其本人确认
+    private static final String OWNER = "test-user";
+    private static final String ROLE_ADMIN = "admin";
 
     @Mock
     private DeviceService deviceService;
@@ -72,7 +76,19 @@ class ActionServiceTest {
     }
 
     private AgentAction createAction(ActionType type, String code) {
-        return actionManager.create(type, "device", code, Map.of(), "test-user");
+        return actionManager.create(type, "device", code, Map.of(), OWNER);
+    }
+
+    private LinkageConfigDTO linkage(boolean enabled, int threshold, int hysteresis) {
+        LinkageConfigDTO dto = new LinkageConfigDTO();
+        dto.setEnabled(enabled);
+        dto.setThreshold(threshold);
+        dto.setHysteresis(hysteresis);
+        return dto;
+    }
+
+    private AgentAction createConfigAction(ActionType type, Map<String, Object> args) {
+        return actionManager.create(type, "config", "system", args, OWNER);
     }
 
     // ============ 正常确认：完整状态机 PENDING → CONFIRMED → EXECUTING → SUCCESS ============
@@ -82,7 +98,7 @@ class ActionServiceTest {
         when(deviceService.getDeviceByCode("lamp001")).thenReturn(onlineDevice("lamp001", "OFF"));
         AgentAction action = createAction(ActionType.TURN_ON_LIGHT, "lamp001");
 
-        AgentAction result = actionService.confirmAndExecute(action.getActionId());
+        AgentAction result = actionService.confirmAndExecute(action.getActionId(), OWNER, ROLE_ADMIN);
 
         assertThat(result.getStatus()).isEqualTo(ActionStatus.SUCCESS);
         assertThat(result.getMessage()).contains("执行成功");
@@ -94,10 +110,59 @@ class ActionServiceTest {
         when(deviceService.getDeviceByCode("lamp002")).thenReturn(onlineDevice("lamp002", "ON"));
         AgentAction action = createAction(ActionType.TURN_OFF_LIGHT, "lamp002");
 
-        AgentAction result = actionService.confirmAndExecute(action.getActionId());
+        AgentAction result = actionService.confirmAndExecute(action.getActionId(), OWNER, ROLE_ADMIN);
 
         assertThat(result.getStatus()).isEqualTo(ActionStatus.SUCCESS);
         assertThat(executorCalls).hasValue(1);
+    }
+
+    @Test
+    void operator角色同样具备控制权限() {
+        when(deviceService.getDeviceByCode("lamp001")).thenReturn(onlineDevice("lamp001", "OFF"));
+        AgentAction action = createAction(ActionType.TURN_ON_LIGHT, "lamp001");
+
+        AgentAction result = actionService.confirmAndExecute(action.getActionId(), OWNER, "operator");
+
+        assertThat(result.getStatus()).isEqualTo(ActionStatus.SUCCESS);
+        assertThat(executorCalls).hasValue(1);
+    }
+
+    // ============ 归属与角色校验（安全修复：Action ID 泄露防护） ============
+
+    @Test
+    void 他人无法确认且不泄露操作存在性() {
+        AgentAction action = createAction(ActionType.TURN_ON_LIGHT, "lamp001");
+
+        assertThatThrownBy(() -> actionService.confirmAndExecute(action.getActionId(), "other-user", ROLE_ADMIN))
+                .isInstanceOf(ActionRejectedException.class)
+                .hasMessageContaining("不属于当前用户");
+        // 状态仍为 PENDING，执行器零调用
+        assertThat(actionManager.find(action.getActionId()).orElseThrow().getStatus())
+                .isEqualTo(ActionStatus.PENDING_CONFIRMATION);
+        assertThat(executorCalls).hasValue(0);
+    }
+
+    @Test
+    void 他人无法取消() {
+        AgentAction action = createAction(ActionType.TURN_OFF_LIGHT, "lamp001");
+
+        assertThatThrownBy(() -> actionService.cancel(action.getActionId(), "other-user", ROLE_ADMIN))
+                .isInstanceOf(ActionRejectedException.class)
+                .hasMessageContaining("不属于当前用户");
+        assertThat(actionManager.find(action.getActionId()).orElseThrow().getStatus())
+                .isEqualTo(ActionStatus.PENDING_CONFIRMATION);
+    }
+
+    @Test
+    void municipal角色无控制权限被拒() {
+        AgentAction action = createAction(ActionType.TURN_ON_LIGHT, "lamp001");
+
+        assertThatThrownBy(() -> actionService.confirmAndExecute(action.getActionId(), OWNER, "municipal"))
+                .isInstanceOf(ActionRejectedException.class)
+                .hasMessageContaining("无控制权限");
+        assertThat(actionManager.find(action.getActionId()).orElseThrow().getStatus())
+                .isEqualTo(ActionStatus.PENDING_CONFIRMATION);
+        assertThat(executorCalls).hasValue(0);
     }
 
     // ============ 用户取消 ============
@@ -106,7 +171,7 @@ class ActionServiceTest {
     void 用户取消后Action置CANCELLED且执行器零调用() {
         AgentAction action = createAction(ActionType.TURN_OFF_LIGHT, "lamp001");
 
-        AgentAction result = actionService.cancel(action.getActionId());
+        AgentAction result = actionService.cancel(action.getActionId(), OWNER, ROLE_ADMIN);
 
         assertThat(result.getStatus()).isEqualTo(ActionStatus.CANCELLED);
         assertThat(executorCalls).hasValue(0);
@@ -118,9 +183,9 @@ class ActionServiceTest {
     void 已执行Action重复确认被拒绝且不二次执行() {
         when(deviceService.getDeviceByCode("lamp001")).thenReturn(onlineDevice("lamp001", "OFF"));
         AgentAction action = createAction(ActionType.TURN_ON_LIGHT, "lamp001");
-        actionService.confirmAndExecute(action.getActionId());
+        actionService.confirmAndExecute(action.getActionId(), OWNER, ROLE_ADMIN);
 
-        assertThatThrownBy(() -> actionService.confirmAndExecute(action.getActionId()))
+        assertThatThrownBy(() -> actionService.confirmAndExecute(action.getActionId(), OWNER, ROLE_ADMIN))
                 .isInstanceOf(ActionRejectedException.class)
                 .hasMessageContaining("重复");
         // 状态仍为 SUCCESS，执行器只被调用过一次
@@ -132,9 +197,9 @@ class ActionServiceTest {
     @Test
     void 已取消Action重复取消被拒绝() {
         AgentAction action = createAction(ActionType.TURN_OFF_LIGHT, "lamp001");
-        actionService.cancel(action.getActionId());
+        actionService.cancel(action.getActionId(), OWNER, ROLE_ADMIN);
 
-        assertThatThrownBy(() -> actionService.cancel(action.getActionId()))
+        assertThatThrownBy(() -> actionService.cancel(action.getActionId(), OWNER, ROLE_ADMIN))
                 .isInstanceOf(ActionRejectedException.class)
                 .hasMessageContaining("重复");
     }
@@ -144,10 +209,10 @@ class ActionServiceTest {
     @Test
     void 过期Action确认被拒绝并置EXPIRED() throws InterruptedException {
         AgentAction action = actionManager.create(ActionType.TURN_OFF_LIGHT, "device", "lamp001",
-                Map.of(), "test-user", 1L);
+                Map.of(), OWNER, 1L);
         Thread.sleep(10);
 
-        assertThatThrownBy(() -> actionService.confirmAndExecute(action.getActionId()))
+        assertThatThrownBy(() -> actionService.confirmAndExecute(action.getActionId(), OWNER, ROLE_ADMIN))
                 .isInstanceOf(ActionRejectedException.class)
                 .hasMessageContaining("过期");
         assertThat(actionManager.find(action.getActionId()).orElseThrow().getStatus())
@@ -159,10 +224,10 @@ class ActionServiceTest {
 
     @Test
     void 不存在的actionId确认和取消均被拒绝() {
-        assertThatThrownBy(() -> actionService.confirmAndExecute("no-such-id"))
+        assertThatThrownBy(() -> actionService.confirmAndExecute("no-such-id", OWNER, ROLE_ADMIN))
                 .isInstanceOf(ActionRejectedException.class)
                 .hasMessageContaining("不存在");
-        assertThatThrownBy(() -> actionService.cancel("no-such-id"))
+        assertThatThrownBy(() -> actionService.cancel("no-such-id", OWNER, ROLE_ADMIN))
                 .isInstanceOf(ActionRejectedException.class)
                 .hasMessageContaining("不存在");
     }
@@ -174,7 +239,7 @@ class ActionServiceTest {
         when(deviceService.getDeviceByCode("lamp001")).thenReturn(null);
         AgentAction action = createAction(ActionType.TURN_ON_LIGHT, "lamp001");
 
-        assertThatThrownBy(() -> actionService.confirmAndExecute(action.getActionId()))
+        assertThatThrownBy(() -> actionService.confirmAndExecute(action.getActionId(), OWNER, ROLE_ADMIN))
                 .isInstanceOf(ActionRejectedException.class)
                 .hasMessageContaining("设备不存在");
         assertThat(actionManager.find(action.getActionId()).orElseThrow().getStatus())
@@ -189,7 +254,7 @@ class ActionServiceTest {
         when(deviceService.getDeviceByCode("lamp001")).thenReturn(offline);
         AgentAction action = createAction(ActionType.TURN_ON_LIGHT, "lamp001");
 
-        assertThatThrownBy(() -> actionService.confirmAndExecute(action.getActionId()))
+        assertThatThrownBy(() -> actionService.confirmAndExecute(action.getActionId(), OWNER, ROLE_ADMIN))
                 .isInstanceOf(ActionRejectedException.class)
                 .hasMessageContaining("离线");
         assertThat(actionManager.find(action.getActionId()).orElseThrow().getStatus())
@@ -202,7 +267,7 @@ class ActionServiceTest {
         when(deviceService.getDeviceByCode("lamp001")).thenReturn(onlineDevice("lamp001", "ON"));
         AgentAction action = createAction(ActionType.TURN_ON_LIGHT, "lamp001");
 
-        assertThatThrownBy(() -> actionService.confirmAndExecute(action.getActionId()))
+        assertThatThrownBy(() -> actionService.confirmAndExecute(action.getActionId(), OWNER, ROLE_ADMIN))
                 .isInstanceOf(ActionRejectedException.class)
                 .hasMessageContaining("状态已变化");
         assertThat(actionManager.find(action.getActionId()).orElseThrow().getStatus())
@@ -215,7 +280,7 @@ class ActionServiceTest {
         when(deviceService.getDeviceByCode("lamp002")).thenReturn(onlineDevice("lamp002", "OFF"));
         AgentAction action = createAction(ActionType.TURN_OFF_LIGHT, "lamp002");
 
-        assertThatThrownBy(() -> actionService.confirmAndExecute(action.getActionId()))
+        assertThatThrownBy(() -> actionService.confirmAndExecute(action.getActionId(), OWNER, ROLE_ADMIN))
                 .isInstanceOf(ActionRejectedException.class)
                 .hasMessageContaining("状态已变化");
         assertThat(actionManager.find(action.getActionId()).orElseThrow().getStatus())
@@ -224,18 +289,6 @@ class ActionServiceTest {
     }
 
     // ============ 配置类目标（阶段20） ============
-
-    private LinkageConfigDTO linkage(boolean enabled, int threshold, int hysteresis) {
-        LinkageConfigDTO dto = new LinkageConfigDTO();
-        dto.setEnabled(enabled);
-        dto.setThreshold(threshold);
-        dto.setHysteresis(hysteresis);
-        return dto;
-    }
-
-    private AgentAction createConfigAction(ActionType type, Map<String, Object> args) {
-        return actionManager.create(type, "config", "system", args, "test-user");
-    }
 
     @Test
     void 配置类确认成功跳过设备检查并执行() {
@@ -246,7 +299,7 @@ class ActionServiceTest {
         when(configService.getLinkageConfig()).thenReturn(linkage(true, 30, 10));
         AgentAction action = createConfigAction(ActionType.UPDATE_LUX_THRESHOLD, Map.of("value", 150));
 
-        AgentAction result = actionService.confirmAndExecute(action.getActionId());
+        AgentAction result = actionService.confirmAndExecute(action.getActionId(), OWNER, ROLE_ADMIN);
 
         assertThat(result.getStatus()).isEqualTo(ActionStatus.SUCCESS);
         assertThat(executorCalls).hasValue(1);
@@ -263,7 +316,7 @@ class ActionServiceTest {
         when(configService.getLinkageConfig()).thenReturn(linkage(true, 150, 10));
         AgentAction action = createConfigAction(ActionType.UPDATE_LUX_THRESHOLD, Map.of("value", 150));
 
-        assertThatThrownBy(() -> actionService.confirmAndExecute(action.getActionId()))
+        assertThatThrownBy(() -> actionService.confirmAndExecute(action.getActionId(), OWNER, ROLE_ADMIN))
                 .isInstanceOf(ActionRejectedException.class)
                 .hasMessageContaining("已变化");
         assertThat(actionManager.find(action.getActionId()).orElseThrow().getStatus())
@@ -275,7 +328,7 @@ class ActionServiceTest {
     void 配置类取消确认() {
         AgentAction action = createConfigAction(ActionType.UPDATE_AUTO_MODE, Map.of("enabled", false));
 
-        AgentAction result = actionService.cancel(action.getActionId());
+        AgentAction result = actionService.cancel(action.getActionId(), OWNER, ROLE_ADMIN);
 
         assertThat(result.getStatus()).isEqualTo(ActionStatus.CANCELLED);
         assertThat(executorCalls).hasValue(0);

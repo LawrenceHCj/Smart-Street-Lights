@@ -1,7 +1,8 @@
 package com.smartlamp.agent.actions;
 
-import com.smartlamp.dto.ControlOutcome;
-import com.smartlamp.service.DeviceControlService;
+import com.smartlamp.entity.DeviceCommand;
+import com.smartlamp.entity.enums.CommandStatus;
+import com.smartlamp.service.DeviceCommandService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -13,26 +14,41 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-// 阶段18：真实控制执行器单测——白名单 Action → 3号 DeviceControlService 的映射与结果如实报告
+// 整合修复#5：控制执行器单测——Agent 与网页统一走 DeviceCommandService（命令表），
+// 按命令表真实状态如实报告：SUCCESS 才 DEVICE_CONFIRMED，未获回执只能 COMMAND_ACCEPTED
 @ExtendWith(MockitoExtension.class)
 class DeviceControlExecutorTest {
 
     @Mock
-    private DeviceControlService deviceControlService;
+    private DeviceCommandService deviceCommandService;
 
     private ActionManager actionManager;
     private ActionGateway actionGateway;
+
+    // 回执等待窗口：默认 5 秒；置 0 时执行器不等待直接报 COMMAND_ACCEPTED
+    private DeviceControlExecutor executorWith(long ackTimeoutMs) {
+        return new DeviceControlExecutor(actionGateway, deviceCommandService, ackTimeoutMs);
+    }
+
+    private DeviceCommand command(CommandStatus status) {
+        DeviceCommand command = new DeviceCommand();
+        command.setCommandId("CMD-1");
+        command.setDeviceCode("lamp001");
+        command.setAction("ON");
+        command.setStatus(status);
+        return command;
+    }
 
     @BeforeEach
     void setUp() {
         actionManager = new ActionManager();
         actionGateway = new ActionGateway();
         ReflectionTestUtils.setField(actionGateway, "actionManager", actionManager);
-        new DeviceControlExecutor(actionGateway, deviceControlService);
     }
 
     private AgentAction confirmedAction(ActionType type, String code) {
@@ -41,80 +57,81 @@ class DeviceControlExecutorTest {
         return action;
     }
 
-    // ============ 映射与如实报告 ============
+    // ============ 与网页统一走 DeviceCommandService ============
 
     @Test
-    void 开灯执行调用turnOnLight且未获回执时置COMMAND_ACCEPTED绝不标SUCCESS() {
-        when(deviceControlService.turnOnLight("lamp001")).thenReturn(
-                ControlOutcome.accepted("CMD-1", "lamp001", "ON", 1000L, "控制指令已发送，但当前尚未获得设备执行确认"));
+    void 开灯执行调用dispatch且无回执时如实COMMAND_ACCEPTED() {
+        when(deviceCommandService.dispatch("lamp001", "ON", "AGENT")).thenReturn(command(CommandStatus.DISPATCHED));
         AgentAction action = confirmedAction(ActionType.TURN_ON_LIGHT, "lamp001");
 
-        AgentAction result = actionGateway.execute(action.getActionId());
+        ExecutorResult result = executorWith(0).execute(action);
 
-        assertThat(result.getStatus()).isEqualTo(ActionStatus.COMMAND_ACCEPTED);
-        assertThat(result.getMessage())
-                .contains("COMMAND_ACCEPTED")
-                .contains("尚未获得设备执行确认")
-                .contains("CMD-1");
-        verify(deviceControlService).turnOnLight("lamp001");
-        verify(deviceControlService, never()).turnOffLight("lamp001");
+        assertThat(result.status()).isEqualTo(com.smartlamp.dto.CommandStatus.COMMAND_ACCEPTED);
+        assertThat(result.message()).contains("COMMAND_ACCEPTED").contains("CMD-1");
+        verify(deviceCommandService).dispatch("lamp001", "ON", "AGENT");
     }
 
     @Test
-    void 关灯执行调用turnOffLight且未获回执时置COMMAND_ACCEPTED() {
-        when(deviceControlService.turnOffLight("lamp002")).thenReturn(
-                ControlOutcome.accepted("CMD-2", "lamp002", "OFF", 1000L, "控制指令已发送，但当前尚未获得设备执行确认"));
+    void 关灯执行调用dispatch并映射OFF() {
+        DeviceCommand off = command(CommandStatus.DISPATCHED);
+        off.setAction("OFF");
+        when(deviceCommandService.dispatch("lamp002", "OFF", "AGENT")).thenReturn(off);
         AgentAction action = confirmedAction(ActionType.TURN_OFF_LIGHT, "lamp002");
 
-        AgentAction result = actionGateway.execute(action.getActionId());
+        ExecutorResult result = executorWith(0).execute(action);
 
-        assertThat(result.getStatus()).isEqualTo(ActionStatus.COMMAND_ACCEPTED);
-        assertThat(result.getMessage()).contains("COMMAND_ACCEPTED");
-        verify(deviceControlService).turnOffLight("lamp002");
-        verify(deviceControlService, never()).turnOnLight("lamp002");
+        assertThat(result.status()).isEqualTo(com.smartlamp.dto.CommandStatus.COMMAND_ACCEPTED);
+        verify(deviceCommandService).dispatch("lamp002", "OFF", "AGENT");
     }
 
+    // ============ 按命令表真实状态报告 ============
+
     @Test
-    void DEVICE_CONFIRMED时消息如实标注已确认() {
-        when(deviceControlService.turnOnLight("lamp001")).thenReturn(
-                ControlOutcome.confirmed("CMD-3", "lamp001", "ON", 1000L, "设备已确认执行"));
+    void 收到SUCCESS回执时DEVICE_CONFIRMED() {
+        when(deviceCommandService.dispatch(any(), any(), any())).thenReturn(command(CommandStatus.DISPATCHED));
+        when(deviceCommandService.find("CMD-1")).thenReturn(command(CommandStatus.SUCCESS));
         AgentAction action = confirmedAction(ActionType.TURN_ON_LIGHT, "lamp001");
 
-        AgentAction result = actionGateway.execute(action.getActionId());
+        ExecutorResult result = executorWith(5000).execute(action);
 
-        assertThat(result.getStatus()).isEqualTo(ActionStatus.SUCCESS);
-        assertThat(result.getMessage()).contains("DEVICE_CONFIRMED").contains("已确认执行");
-    }
-
-    // ============ Service 失败 / 超时 → Action FAILED ============
-
-    @Test
-    void Service返回FAILED时Action置FAILED且消息如实() {
-        when(deviceControlService.turnOnLight("lamp001")).thenReturn(
-                ControlOutcome.failed("设备离线: lamp001（当前状态: OFFLINE）"));
-        AgentAction action = confirmedAction(ActionType.TURN_ON_LIGHT, "lamp001");
-
-        assertThatThrownBy(() -> actionGateway.execute(action.getActionId()))
-                .isInstanceOf(ActionRejectedException.class)
-                .hasMessageContaining("FAILED").hasMessageContaining("离线");
-        AgentAction failed = actionManager.find(action.getActionId()).orElseThrow();
-        assertThat(failed.getStatus()).isEqualTo(ActionStatus.FAILED);
-        assertThat(failed.getMessage()).contains("FAILED");
+        assertThat(result.status()).isEqualTo(com.smartlamp.dto.CommandStatus.DEVICE_CONFIRMED);
+        assertThat(result.message()).contains("DEVICE_CONFIRMED").contains("已确认执行");
     }
 
     @Test
-    void 执行超时TIMEOUT时Action置FAILED且消息如实() {
-        when(deviceControlService.turnOffLight("lamp001")).thenReturn(
-                ControlOutcome.timeout("CMD-4", "lamp001", "OFF", 1000L,
-                        "控制指令已发送，但设备在 5000 毫秒内未确认执行"));
+    void 收到FAILED回执时如实FAILED() {
+        when(deviceCommandService.dispatch(any(), any(), any())).thenReturn(command(CommandStatus.DISPATCHED));
+        when(deviceCommandService.find("CMD-1")).thenReturn(command(CommandStatus.FAILED));
         AgentAction action = confirmedAction(ActionType.TURN_OFF_LIGHT, "lamp001");
 
-        assertThatThrownBy(() -> actionGateway.execute(action.getActionId()))
-                .isInstanceOf(ActionRejectedException.class)
-                .hasMessageContaining("TIMEOUT").hasMessageContaining("未确认执行");
-        AgentAction failed = actionManager.find(action.getActionId()).orElseThrow();
-        assertThat(failed.getStatus()).isEqualTo(ActionStatus.FAILED);
-        assertThat(failed.getMessage()).contains("TIMEOUT");
+        ExecutorResult result = executorWith(5000).execute(action);
+
+        assertThat(result.status()).isEqualTo(com.smartlamp.dto.CommandStatus.FAILED);
+        assertThat(result.message()).contains("FAILED");
+    }
+
+    @Test
+    void 命令表已TIMEOUT时如实TIMEOUT() {
+        when(deviceCommandService.dispatch(any(), any(), any())).thenReturn(command(CommandStatus.DISPATCHED));
+        when(deviceCommandService.find("CMD-1")).thenReturn(command(CommandStatus.TIMEOUT));
+        AgentAction action = confirmedAction(ActionType.TURN_ON_LIGHT, "lamp001");
+
+        ExecutorResult result = executorWith(5000).execute(action);
+
+        assertThat(result.status()).isEqualTo(com.smartlamp.dto.CommandStatus.TIMEOUT);
+        assertThat(result.message()).contains("TIMEOUT");
+    }
+
+    @Test
+    void dispatch失败时如实FAILED() {
+        when(deviceCommandService.dispatch(any(), any(), any()))
+                .thenThrow(new RuntimeException("设备不存在: lamp999"));
+        AgentAction action = confirmedAction(ActionType.TURN_ON_LIGHT, "lamp999");
+
+        ExecutorResult result = executorWith(0).execute(action);
+
+        assertThat(result.status()).isEqualTo(com.smartlamp.dto.CommandStatus.FAILED);
+        assertThat(result.message()).contains("下发失败");
     }
 
     // ============ 安全红线 ============
@@ -125,6 +142,6 @@ class DeviceControlExecutorTest {
 
         assertThatThrownBy(() -> actionGateway.execute(action.getActionId()))
                 .isInstanceOf(ActionRejectedException.class);
-        verify(deviceControlService, never()).turnOnLight("lamp001");
+        verify(deviceCommandService, never()).dispatch(any(), any(), any());
     }
 }

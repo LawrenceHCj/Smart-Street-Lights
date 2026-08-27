@@ -20,12 +20,15 @@ import java.util.List;
 @Component
 public class LlmClient {
 
-    private static final int TIMEOUT_MS = 10_000;
-
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .build();
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    // 单次模型请求超时（毫秒，阶段修复#10：可配置——聊天链路含最多 3 轮工具调用，
+    // 前端应把聊天接口超时设为不小于 3×该值；默认 30 秒/轮）
+    @Value("${llm.timeout-ms:30000}")
+    private int timeoutMs;
 
     @Value("${llm.api-key:}")
     private String apiKey;
@@ -78,7 +81,7 @@ public class LlmClient {
 
         try {
             HttpRequest request = HttpRequest.newBuilder(URI.create(url))
-                    .timeout(Duration.ofMillis(TIMEOUT_MS))
+                    .timeout(Duration.ofMillis(timeoutMs > 0 ? timeoutMs : 30_000))
                     .header("Content-Type", "application/json")
                     .header("Authorization", "Bearer " + apiKey)
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
