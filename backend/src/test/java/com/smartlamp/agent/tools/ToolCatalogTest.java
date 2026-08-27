@@ -46,9 +46,9 @@ class ToolCatalogTest {
         assertThat(names).containsExactlyInAnyOrder(
                 "search_knowledge", "get_device_list", "get_device_status", "get_latest_telemetry",
                 "get_telemetry_history", "get_alert_history", "get_linkage_config",
-                "turn_on_light", "turn_off_light", "set_light_threshold", "set_auto_mode");
-        // 白名单外不存在：批量、万能命令、直接 MQTT 工具
-        assertThat(names).noneMatch(n -> n.contains("all") || n.contains("batch")
+                "turn_on_light", "turn_off_light", "turn_off_all", "set_light_threshold", "set_auto_mode");
+        // 白名单外不存在：万能命令、直接 MQTT 工具
+        assertThat(names).noneMatch(n -> n.contains("batch")
                 || n.contains("execute") || n.contains("mqtt") || n.contains("command"));
     }
 
@@ -57,7 +57,7 @@ class ToolCatalogTest {
         List<ToolCatalog.ToolSpec> actions = toolCatalog.getSpecs().stream()
                 .filter(s -> "action".equals(s.source())).toList();
 
-        assertThat(actions).hasSize(4);
+        assertThat(actions).hasSize(5);
         assertThat(actions).allMatch(s -> "LOW_WRITE".equals(s.riskLevel()) && s.requiresConfirmation());
     }
 
@@ -66,7 +66,8 @@ class ToolCatalogTest {
         ObjectNode result = toolCatalog.execute("execute_command", objectMapper.createObjectNode());
         assertThat(result.path("error").asText()).contains("未知工具");
 
-        ObjectNode batch = toolCatalog.execute("turn_off_all",
+        // "全部打开"未注册（批量开灯不开放）
+        ObjectNode batch = toolCatalog.execute("turn_on_all",
                 objectMapper.createObjectNode().put("deviceCode", "all"));
         assertThat(batch.path("error").asText()).contains("未知工具");
     }

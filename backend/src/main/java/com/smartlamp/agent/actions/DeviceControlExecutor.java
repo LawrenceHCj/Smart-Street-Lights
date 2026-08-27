@@ -78,6 +78,6 @@ public class DeviceControlExecutor implements ActionExecutor {
         }
         // 等待窗口结束仍未获终态：命令在途，如实报告"已下发、未获回执"
         return new ExecutorResult(CommandStatus.COMMAND_ACCEPTED,
-                "COMMAND_ACCEPTED：控制指令已发送，等待窗口内未获得设备回执（命令号 " + command.getCommandId() + "）");
+                "COMMAND_ACCEPTED：控制指令已发送，但当前尚未获得设备执行确认（命令号 " + command.getCommandId() + "）");
     }
 }

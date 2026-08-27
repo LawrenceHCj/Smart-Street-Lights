@@ -11,6 +11,40 @@ export interface AskResponse {
   sources: Source[]
   /** 后端自动创建会话时返回的会话 id；已有会话时原样返回 */
   conversationId?: string
+  /** 待确认操作（批量关闭/阈值/自动模式等需确认操作时返回；开灯关灯自动执行不返回） */
+  action?: PendingAction | null
+}
+
+// ===== 待确认操作协议（【5号代做·需与2号对账】协议见 docs/agent-control-frontend-protocol.md） =====
+export interface PendingAction {
+  actionId: string
+  actionType: string
+  targetId: string
+  summary: string
+  riskLevel: string
+  expiresAt: number
+  status: string
+  originalState?: string
+  targetState?: string
+}
+
+/** 确认/取消接口返回的 Action 终态 */
+export interface AgentActionResult {
+  actionId: string
+  actionType: string
+  targetId: string
+  status: string
+  message: string
+}
+
+/** 确认待确认操作：POST /api/agent/actions/{actionId}/confirm（必须按 actionId，不接受自然语言"确认"） */
+export function confirmAction(actionId: string): Promise<AgentActionResult> {
+  return request.post(`/agent/actions/${actionId}/confirm`, {})
+}
+
+/** 取消待确认操作：POST /api/agent/actions/{actionId}/cancel */
+export function cancelAction(actionId: string): Promise<AgentActionResult> {
+  return request.post(`/agent/actions/${actionId}/cancel`, {})
 }
 
 export interface Conversation {

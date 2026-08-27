@@ -84,14 +84,20 @@ class ActionManagerTest {
 
     @Test
     void 高风险操作创建直接拒绝() {
-        assertThatThrownBy(() -> manager.create(ActionType.TURN_OFF_ALL, "device", "all", Map.of(), "u"))
-                .isInstanceOf(ActionRejectedException.class).hasMessageContaining("高风险");
         assertThatThrownBy(() -> manager.create(ActionType.BULK_UPDATE_DEVICES, "device", "all", Map.of(), "u"))
                 .isInstanceOf(ActionRejectedException.class).hasMessageContaining("高风险");
         assertThatThrownBy(() -> manager.create(ActionType.DELETE_DEVICE, "device", "lamp001", Map.of(), "u"))
                 .isInstanceOf(ActionRejectedException.class).hasMessageContaining("高风险");
         assertThatThrownBy(() -> manager.create(ActionType.UNBIND_DEVICE, "device", "lamp001", Map.of(), "u"))
                 .isInstanceOf(ActionRejectedException.class).hasMessageContaining("高风险");
+    }
+
+    @Test
+    void 批量关闭创建进入待确认状态() {
+        AgentAction action = manager.create(ActionType.TURN_OFF_ALL, "device", "all", Map.of(), "u");
+
+        assertThat(action.getStatus()).isEqualTo(ActionStatus.PENDING_CONFIRMATION);
+        assertThat(action.getRiskLevel()).isEqualTo(ActionRisk.LOW_WRITE);
     }
 
     @Test

@@ -7,6 +7,7 @@ import com.smartlamp.agent.Retriever;
 import com.smartlamp.agent.conversation.AgentMessage;
 import com.smartlamp.agent.tools.ToolCatalog;
 import com.smartlamp.dto.AskResponse;
+import com.smartlamp.dto.PendingActionInfo;
 import com.smartlamp.dto.SourceItem;
 import com.smartlamp.exception.BadRequestException;
 import lombok.extern.slf4j.Slf4j;
@@ -110,7 +111,9 @@ public class AgentService {
             if (answer == null || answer.isBlank()) {
                 throw new LlmException("LLM API 返回内容为空");
             }
-            return new AskResponse(answer, buildSources(executed, text));
+            AskResponse response = new AskResponse(answer, buildSources(executed, text));
+            response.setAction(buildPendingAction(executed));
+            return response;
         } catch (Exception e) {
             // 4. 大模型不可用/流程失败时降级，绝不影响接口可用性
             log.warn("智能体流程失败，降级为本地知识库回答: {}", e.getMessage());
@@ -175,6 +178,32 @@ public class AgentService {
             }
         }
         return sources;
+    }
+
+    // 从已执行工具结果中提取待确认操作（阶段21 联调落地）：前端据此在对话中渲染确认按钮。
+    // 只在工具结果 status=PENDING_CONFIRMATION 且携带 actionId 时返回；开灯/关灯自动执行不返回。
+    private PendingActionInfo buildPendingAction(List<ExecutedTool> executed) {
+        for (int i = executed.size() - 1; i >= 0; i--) {
+            ExecutedTool tool = executed.get(i);
+            JsonNode result = tool.result();
+            if ("action".equals(toolCatalog.sourceOf(tool.name()))
+                    && "PENDING_CONFIRMATION".equals(result.path("status").asText(null))
+                    && !result.path("actionId").asText("").isBlank()) {
+                PendingActionInfo info = new PendingActionInfo();
+                info.setActionId(result.path("actionId").asText());
+                info.setActionType(result.path("actionType").asText(null));
+                info.setTargetId(result.path("targetId").asText(""));
+                info.setSummary(result.path("summary").asText(
+                        result.path("actionType").asText("操作请求")));
+                info.setRiskLevel(result.path("riskLevel").asText(null));
+                info.setExpiresAt(result.has("expiresAt") ? result.path("expiresAt").asLong() : null);
+                info.setStatus("PENDING_CONFIRMATION");
+                info.setOriginalState(result.path("originalState").asText(null));
+                info.setTargetState(result.path("targetState").asText(null));
+                return info;
+            }
+        }
+        return null;
     }
 
     // 本地降级回答：拼接命中条目正文；无命中时返回明确提示
