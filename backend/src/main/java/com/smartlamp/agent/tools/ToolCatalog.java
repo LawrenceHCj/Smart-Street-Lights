@@ -118,7 +118,7 @@ public class ToolCatalog {
                         parameters(properties().set("deviceCode", prop("string", "设备编号，例如 lamp001")), "deviceCode"),
                         agentActionTools::requestTurnOff, "LOW_WRITE", true),
                 new ToolSpec("turn_off_all", "关闭全部设备请求", "action",
-                        "提交关闭全部在线路灯的批量请求（低风险写操作，必须用户二次确认后才会执行，绝不自动执行）。仅当用户明确要求批量关闭全部设备时使用；\"全部打开\"等其他批量操作不开放。",
+                        "提交关闭全部在线路灯的批量请求（低风险写操作，必须用户二次确认后才会执行，绝不自动执行）。当用户表达批量关闭意图时（如\"把所有路灯都关掉\"\"关闭所有路灯\"\"全部关掉\"）必须调用本工具，不得只复述知识库内容；\"全部打开\"等其他批量操作不开放。",
                         parameters(properties()),
                         agentActionTools::requestTurnOffAll, "LOW_WRITE", true),
                 new ToolSpec("set_light_threshold", "光照阈值修改请求", "action",
