@@ -17,8 +17,8 @@ import java.util.regex.Pattern;
 public class MqttIngestionService {
     private static final Pattern TOPIC_PATTERN = Pattern.compile("^device/([^/]+)/(data|heartbeat|cmd_ack)$");
     private static final int MAX_PAYLOAD_LENGTH = 65_535;
-    /** 允许的设备时间戳偏差，超过即视为异常丢弃：前后各 24 小时。 */
-    private static final long MAX_CLOCK_SKEW_MS = 24L * 60 * 60 * 1000;
+    /** 允许的设备时间戳偏差，超过即视为异常丢弃：前后各 5 分钟。 */
+    private static final long MAX_CLOCK_SKEW_MS = 5L * 60 * 1000;
 
     private final DeviceRepository deviceRepository;
     private final LightPointRepository lightPointRepository;
@@ -75,14 +75,15 @@ public class MqttIngestionService {
 
         long ts = readTimestamp(json.get("ts"));
         long receivedAt = System.currentTimeMillis();
-        validateClockSkew(ts, receivedAt);
+        if (Math.abs(receivedAt - ts) > MAX_CLOCK_SKEW_MS) return;
 
         Device device = deviceRepository.findByCode(deviceId).orElse(null);
         boolean recoveredFromOffline = device != null && "OFFLINE".equals(device.getStatus());
         if (device == null) device = newDevice(deviceId);
 
+        boolean accepted;
         if ("data".equals(messageType)) {
-            ingestTelemetry(device, json, payload, ts, receivedAt);
+            accepted = ingestTelemetry(device, json, payload, ts, receivedAt);
         } else {
             // heartbeat：心跳只更新 lastSeen，不更新遥测指标，避免把陈旧遥测误判为新鲜数据。
             // 旧心跳不应让设备重新过期：只有心跳 ts 比当前 lastSeen 更新时才覆盖。
@@ -90,17 +91,15 @@ public class MqttIngestionService {
                 device.setLastSeen(ts);
                 device.setStatus("ONLINE");
                 deviceRepository.save(device);
+                accepted = true;
+            } else {
+                accepted = false;
             }
         }
-        if (recoveredFromOffline) alarmService.recoverOfflineAlarms(deviceId);
+        if (accepted && recoveredFromOffline) alarmService.recoverOfflineAlarms(deviceId);
     }
 
-    private void ingestTelemetry(Device device, JsonNode json, String rawPayload, long ts, long receivedAt) {
-        // 1) 幂等去重：以 (deviceCode, ts) 为唯一键，重复 QoS 投递直接丢弃，避免覆盖当前快照。
-        if (lightPointRepository.existsByDeviceCodeAndTs(device.getCode(), ts)) {
-            return;
-        }
-
+    private boolean ingestTelemetry(Device device, JsonNode json, String rawPayload, long ts, long receivedAt) {
         double lux = requiredNumber(json, "lux");
         if (lux < 0) throw new IllegalArgumentException("lux 不能小于 0");
 
@@ -113,20 +112,21 @@ public class MqttIngestionService {
 
         // 2) 防止延迟/重复旧消息覆盖最新快照：仅当采集时间不早于当前 lastTelemetryAt 时才更新设备快照。
         Long prevTelemetryTs = device.getLastTelemetryAt();
-        if (prevTelemetryTs == null || ts >= prevTelemetryTs) {
-            device.setLatestLux(lux);
-            device.setLatestTemperature(temperature);
-            device.setLatestVoltage(voltage);
-            device.setLatestCurrent(current);
-            device.setLatestPower(power);
-            device.setLatestEnergy(energy);
-            if (lampStatus != null) device.setLampStatus(lampStatus);
-            device.setLastTelemetryAt(ts);
-            // 数据消息本身代表设备在线；只有更新快照时才推进 lastSeen，避免旧消息拉长在线窗口。
-            device.setLastSeen(ts);
-            device.setStatus("ONLINE");
-            deviceRepository.save(device);
-        }
+        if (prevTelemetryTs != null && ts <= prevTelemetryTs) return false;
+        device.setLatestLux(lux);
+        device.setLatestTemperature(temperature);
+        device.setLatestVoltage(voltage);
+        device.setLatestCurrent(current);
+        device.setLatestPower(power);
+        device.setLatestEnergy(energy);
+        if (lampStatus != null) device.setLampStatus(lampStatus);
+        device.setLastTelemetryAt(ts);
+        device.setLastSeen(device.getLastSeen() == null ? ts : Math.max(device.getLastSeen(), ts));
+        device.setStatus("ONLINE");
+        deviceRepository.save(device);
+
+        // QoS 1 幂等去重：重复投递可刷新快照，但不会新增历史点。
+        if (lightPointRepository.existsByDeviceCodeAndTs(device.getCode(), ts)) return true;
 
         // 3) 落库历史点（receivedAt 用于区分采集时间与服务接收时间）。
         LightPoint point = new LightPoint();
@@ -141,14 +141,9 @@ public class MqttIngestionService {
         point.setTs(ts);
         point.setRawPayload(rawPayload);
         point.setCreatedAt(LocalDateTime.now());
+        point.setServerReceivedAt(LocalDateTime.now());
         lightPointRepository.save(point);
-    }
-
-    private void validateClockSkew(long ts, long receivedAt) {
-        if (Math.abs(receivedAt - ts) > MAX_CLOCK_SKEW_MS) {
-            throw new IllegalArgumentException(
-                    "设备时间戳与服务器时间偏差超过 " + (MAX_CLOCK_SKEW_MS / 3600000) + " 小时，疑似伪造或时钟漂移，拒绝该消息");
-        }
+        return true;
     }
 
     private Device newDevice(String deviceId) {
