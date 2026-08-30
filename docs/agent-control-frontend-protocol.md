@@ -55,9 +55,9 @@
 
 - `action` 字段**仅在产生待确认操作时返回**；普通问答、知识库回答没有该字段。
 - **开灯/关灯为免确认操作**（权限调整后）：admin/operator 提问时系统直接执行，执行结果在 `answer` 中如实转述（不返回 action 字段、无确认卡片）；municipal 或无权限时回答拒绝原因。
-- 需确认操作（当前为修改阈值/自动模式）才返回 `action` 字段与确认卡片。
+- 需确认操作（修改阈值/自动模式、批量开灯/批量关灯）才返回 `action` 字段与确认卡片。
 - `expiresAt` 为 epoch 毫秒（创建后 2 分钟有效）。
-- `actionType` 取值：`TURN_ON_LIGHT` / `TURN_OFF_LIGHT` / `UPDATE_LUX_THRESHOLD` / `UPDATE_AUTO_MODE`。
+- `actionType` 取值：`TURN_ON_LIGHT` / `TURN_OFF_LIGHT`（免确认，通常不出现在卡片）/ `TURN_OFF_ALL` / `TURN_ON_ALL` / `UPDATE_LUX_THRESHOLD` / `UPDATE_AUTO_MODE`。
 - `summary` 为推荐展示文案（如"关闭路灯"、"修改光照阈值"、"开启自动控制"）；前端也可自行按 actionType 映射文案。
 - `originalState` / `targetState` 用于卡片上的"当前状态 / 目标状态"展示（如 ON/OFF）。
 

@@ -22,7 +22,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-// 批量控制执行器单测（权限调整后开放"关闭全部设备"）：
+// 批量控制执行器单测（权限调整后开放"关闭全部设备"/"打开全部设备"，均需二次确认）：
 // 只对在线且已绑定设备逐台下发（与网页同一 DeviceCommandService），按命令表回执如实聚合
 @ExtendWith(MockitoExtension.class)
 class BatchControlExecutorTest {
@@ -64,8 +64,8 @@ class BatchControlExecutorTest {
         ReflectionTestUtils.setField(actionGateway, "actionManager", actionManager);
     }
 
-    private AgentAction confirmedBatchAction() {
-        AgentAction action = actionManager.create(ActionType.TURN_OFF_ALL, "device", "all", Map.of(), "test-user");
+    private AgentAction confirmedBatchAction(ActionType type) {
+        AgentAction action = actionManager.create(type, "device", "all", Map.of(), "test-user");
         actionManager.confirm(action.getActionId());
         return action;
     }
@@ -73,7 +73,7 @@ class BatchControlExecutorTest {
     @Test
     void 无在线设备时FAILED不执行() {
         when(deviceService.getAllDevices()).thenReturn(List.of());
-        AgentAction action = confirmedBatchAction();
+        AgentAction action = confirmedBatchAction(ActionType.TURN_OFF_ALL);
 
         ExecutorResult result = executorWith(0).execute(action);
 
@@ -87,7 +87,7 @@ class BatchControlExecutorTest {
                 onlineBoundDevice("lamp001"), onlineBoundDevice("lamp002")));
         when(deviceCommandService.dispatch("lamp001", "OFF", "AGENT")).thenReturn(command("CMD-1", "lamp001", CommandStatus.DISPATCHED));
         when(deviceCommandService.dispatch("lamp002", "OFF", "AGENT")).thenReturn(command("CMD-2", "lamp002", CommandStatus.DISPATCHED));
-        AgentAction action = confirmedBatchAction();
+        AgentAction action = confirmedBatchAction(ActionType.TURN_OFF_ALL);
 
         ExecutorResult result = executorWith(0).execute(action);
 
@@ -100,7 +100,7 @@ class BatchControlExecutorTest {
         when(deviceService.getAllDevices()).thenReturn(List.of(onlineBoundDevice("lamp001")));
         when(deviceCommandService.dispatch("lamp001", "OFF", "AGENT")).thenReturn(command("CMD-1", "lamp001", CommandStatus.DISPATCHED));
         when(deviceCommandService.find("CMD-1")).thenReturn(command("CMD-1", "lamp001", CommandStatus.SUCCESS));
-        AgentAction action = confirmedBatchAction();
+        AgentAction action = confirmedBatchAction(ActionType.TURN_OFF_ALL);
 
         ExecutorResult result = executorWith(5000).execute(action);
 
@@ -113,7 +113,7 @@ class BatchControlExecutorTest {
         when(deviceService.getAllDevices()).thenReturn(List.of(onlineBoundDevice("lamp001")));
         when(deviceCommandService.dispatch("lamp001", "OFF", "AGENT")).thenReturn(command("CMD-1", "lamp001", CommandStatus.DISPATCHED));
         when(deviceCommandService.find("CMD-1")).thenReturn(command("CMD-1", "lamp001", CommandStatus.FAILED));
-        AgentAction action = confirmedBatchAction();
+        AgentAction action = confirmedBatchAction(ActionType.TURN_OFF_ALL);
 
         ExecutorResult result = executorWith(5000).execute(action);
 
@@ -128,7 +128,7 @@ class BatchControlExecutorTest {
         when(deviceService.getAllDevices()).thenReturn(List.of(
                 onlineBoundDevice("lamp001"), offline));
         when(deviceCommandService.dispatch("lamp001", "OFF", "AGENT")).thenReturn(command("CMD-1", "lamp001", CommandStatus.DISPATCHED));
-        AgentAction action = confirmedBatchAction();
+        AgentAction action = confirmedBatchAction(ActionType.TURN_OFF_ALL);
 
         ExecutorResult result = executorWith(0).execute(action);
 
@@ -138,6 +138,44 @@ class BatchControlExecutorTest {
     @Test
     void 未确认Action绝不批量执行() {
         AgentAction action = actionManager.create(ActionType.TURN_OFF_ALL, "device", "all", Map.of(), "test-user");
+
+        assertThatThrownBy(() -> actionGateway.execute(action.getActionId()))
+                .isInstanceOf(ActionRejectedException.class);
+        verify(deviceCommandService, never()).dispatch(any(), any(), any());
+    }
+
+    // ============ 批量开灯（TURN_ON_ALL，对称开放） ============
+
+    @Test
+    void 批量开灯下发ON命令并按回执聚合() {
+        when(deviceService.getAllDevices()).thenReturn(List.of(onlineBoundDevice("lamp001")));
+        when(deviceCommandService.dispatch("lamp001", "ON", "AGENT"))
+                .thenReturn(command("CMD-1", "lamp001", CommandStatus.DISPATCHED));
+        when(deviceCommandService.find("CMD-1")).thenReturn(command("CMD-1", "lamp001", CommandStatus.SUCCESS));
+        AgentAction action = confirmedBatchAction(ActionType.TURN_ON_ALL);
+
+        ExecutorResult result = executorWith(5000).execute(action);
+
+        assertThat(result.status()).isEqualTo(com.smartlamp.dto.CommandStatus.DEVICE_CONFIRMED);
+        assertThat(result.message()).contains("批量打开完成").contains("共下发 1 台打开命令");
+    }
+
+    @Test
+    void 批量开灯无回执时如实COMMAND_ACCEPTED() {
+        when(deviceService.getAllDevices()).thenReturn(List.of(onlineBoundDevice("lamp001")));
+        when(deviceCommandService.dispatch("lamp001", "ON", "AGENT"))
+                .thenReturn(command("CMD-1", "lamp001", CommandStatus.DISPATCHED));
+        AgentAction action = confirmedBatchAction(ActionType.TURN_ON_ALL);
+
+        ExecutorResult result = executorWith(0).execute(action);
+
+        assertThat(result.status()).isEqualTo(com.smartlamp.dto.CommandStatus.COMMAND_ACCEPTED);
+        assertThat(result.message()).contains("批量打开命令已下发").contains("尚未获得设备执行确认");
+    }
+
+    @Test
+    void 未确认的批量开灯绝不执行() {
+        AgentAction action = actionManager.create(ActionType.TURN_ON_ALL, "device", "all", Map.of(), "test-user");
 
         assertThatThrownBy(() -> actionGateway.execute(action.getActionId()))
                 .isInstanceOf(ActionRejectedException.class);

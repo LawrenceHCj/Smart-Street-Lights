@@ -509,6 +509,7 @@ function actionLabel(type: string): string {
     TURN_ON_LIGHT: '打开路灯',
     TURN_OFF_LIGHT: '关闭路灯',
     TURN_OFF_ALL: '关闭全部设备',
+    TURN_ON_ALL: '打开全部设备',
     UPDATE_LUX_THRESHOLD: '修改光照阈值',
     UPDATE_AUTO_MODE: '修改自动模式',
   }

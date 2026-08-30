@@ -394,7 +394,7 @@ class AgentActionToolsTest {
         assertThat(action.getTargetState()).isEqualTo("autoControl=false");
     }
 
-    // ============ 批量关闭（权限调整后开放，需二次确认） ============
+    // ============ 批量开/关（权限调整后开放，均需二次确认） ============
 
     @Test
     void 批量关闭生成待确认请求且绝不自动执行() {
@@ -432,6 +432,49 @@ class AgentActionToolsTest {
         setCurrentUser("admin");
 
         JsonNode result = tools.requestTurnOffAll(objectMapper.createObjectNode());
+
+        assertThat(result.path("status").asText()).isEqualTo("REJECTED_NO_TARGETS");
+        assertThat(result.path("actionId").asText()).isBlank();
+    }
+
+    // ============ 批量开灯（对称开放，需二次确认） ============
+
+    @Test
+    void 批量开灯生成待确认请求且绝不自动执行() {
+        when(deviceService.getAllDevices()).thenReturn(List.of(
+                onlineDevice("lamp001"), onlineDevice("lamp002")));
+        setCurrentUser("admin");
+
+        JsonNode result = tools.requestTurnOnAll(objectMapper.createObjectNode());
+
+        assertThat(result.path("status").asText()).isEqualTo(ActionStatus.PENDING_CONFIRMATION.name());
+        assertThat(result.path("summary").asText()).contains("2 台在线");
+        assertThat(result.path("expiresAt").asLong()).isPositive();
+        AgentAction action = actionManager.find(result.path("actionId").asText()).orElseThrow();
+        assertThat(action.getActionType()).isEqualTo(ActionType.TURN_ON_ALL);
+        assertThat(action.getTargetId()).isEqualTo("all");
+        assertThat(action.getStatus()).isEqualTo(ActionStatus.PENDING_CONFIRMATION);
+        // 绝不自动执行：等待用户按 actionId 确认
+        verify(deviceCommandService, never()).dispatch(any(), any(), any());
+        verify(agentActionAuditService).recordCreated(action);
+    }
+
+    @Test
+    void 批量开灯municipal无权限拒绝() {
+        setCurrentUser("viewer", "municipal");
+
+        JsonNode result = tools.requestTurnOnAll(objectMapper.createObjectNode());
+
+        assertThat(result.path("status").asText()).isEqualTo("REJECTED_NO_PERMISSION");
+        verify(deviceService, never()).getAllDevices();
+    }
+
+    @Test
+    void 无在线设备时批量开灯拒绝() {
+        when(deviceService.getAllDevices()).thenReturn(List.of());
+        setCurrentUser("admin");
+
+        JsonNode result = tools.requestTurnOnAll(objectMapper.createObjectNode());
 
         assertThat(result.path("status").asText()).isEqualTo("REJECTED_NO_TARGETS");
         assertThat(result.path("actionId").asText()).isBlank();

@@ -55,8 +55,9 @@ public class ActionService {
 
     // 设备类目标二次校验（只读）：确认时设备可能已被删除 / 离线 / 状态已变化
     private void checkDeviceForConfirm(AgentAction action) {
-        // 批量关闭：确认时复查仍有在线且已绑定设备（状态可能已变化）
-        if (action.getActionType() == ActionType.TURN_OFF_ALL) {
+        // 批量开/关：确认时复查仍有在线且已绑定设备（状态可能已变化）
+        if (action.getActionType() == ActionType.TURN_OFF_ALL
+                || action.getActionType() == ActionType.TURN_ON_ALL) {
             long online = deviceService.getAllDevices().stream()
                     .filter(d -> Boolean.TRUE.equals(d.getBound()) && "ONLINE".equals(d.getStatus()))
                     .count();

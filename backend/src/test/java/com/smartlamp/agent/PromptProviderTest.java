@@ -112,12 +112,46 @@ class PromptProviderTest {
     @Test
     void 批量操作拒绝与模糊命令追问规则() {
         assertThat(prompt).contains("批量操作");
-        assertThat(prompt).contains("仅\"关闭全部设备\"开放");
+        assertThat(prompt).contains("turn_off_all");
+        assertThat(prompt).contains("turn_on_all");
         assertThat(prompt).contains("绝不自动执行");
-        assertThat(prompt).contains("必须调用 turn_off_all 工具提交请求");
+        assertThat(prompt).contains("必须调用对应批量工具提交请求");
         assertThat(prompt).contains("不得只复述知识库");
         assertThat(prompt).contains("必须追问");
         assertThat(prompt).contains("不得自行猜测");
+    }
+
+    @Test
+    void 回答必须简短只给关键信息() {
+        assertThat(prompt).contains("回答必须简短，只给关键信息");
+        assertThat(prompt).contains("1–3 句");
+        assertThat(prompt).contains("不要复述整段知识库原文");
+    }
+
+    @Test
+    void 分点列举每点单独一行() {
+        assertThat(prompt).contains("每个编号单独一行");
+        assertThat(prompt).contains("不要把所有点挤在同一行");
+    }
+
+    @Test
+    void 不得在回答中输出内部标识() {
+        assertThat(prompt).contains("不得在回答中输出 actionId、expiresAt 等系统内部标识");
+        assertThat(prompt).contains("不得输出 actionId、expiresAt 等内部标识");
+    }
+
+    @Test
+    void 设备状态必须逐台如实转述() {
+        assertThat(prompt).contains("逐台按工具返回的 status");
+        assertThat(prompt).contains("不得省略设备");
+        assertThat(prompt).contains("不得把 lampStatus 与在线状态混为一谈");
+    }
+
+    @Test
+    void 历史告警不代表设备当前状态() {
+        assertThat(prompt).contains("告警记录中的历史告警");
+        assertThat(prompt).contains("不代表设备当前状态");
+        assertThat(prompt).contains("不得据此说设备离线");
     }
 
     @Test

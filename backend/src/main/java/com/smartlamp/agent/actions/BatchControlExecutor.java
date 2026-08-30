@@ -11,9 +11,10 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 
-// 批量控制执行器（权限调整后开放"关闭全部设备"，需二次确认）：
+// 批量控制执行器（权限调整后开放"关闭全部设备"/"打开全部设备"，均需二次确认）：
 // Agent Write Tool → Action Gateway → 3号 DeviceCommandService（逐台下发命令，与网页同一链路）。
-// 执行时只对"已绑定且在线"的设备逐台下发 OFF，并按命令表回执如实聚合报告：
+// 执行时只对"已绑定且在线"的设备逐台下发（TURN_OFF_ALL→OFF，TURN_ON_ALL→ON），
+// 并按命令表回执如实聚合报告：
 //  - 全部确认执行 → DEVICE_CONFIRMED
 //  - 任一失败 → FAILED（含失败数量）
 //  - 窗口结束仍有未确认 → COMMAND_ACCEPTED（如实说明各台状态，绝不谎报全部成功）
@@ -34,10 +35,16 @@ public class BatchControlExecutor implements ActionExecutor {
         this.deviceCommandService = deviceCommandService;
         this.ackTimeoutMs = ackTimeoutMs;
         actionGateway.registerExecutor(ActionType.TURN_OFF_ALL, this);
+        actionGateway.registerExecutor(ActionType.TURN_ON_ALL, this);
     }
 
     @Override
     public ExecutorResult execute(AgentAction action) {
+        // 目标动作：TURN_ON_ALL → ON，TURN_OFF_ALL → OFF
+        boolean turnOn = action.getActionType() == ActionType.TURN_ON_ALL;
+        String targetCommand = turnOn ? "ON" : "OFF";
+        String verb = turnOn ? "打开" : "关闭";
+
         // 1. 目标设备 = 已绑定且在线（只读检查；不满足的设备跳过，绝不向离线设备下发）
         List<Device> targets = new ArrayList<>();
         for (Device device : deviceService.getAllDevices()) {
@@ -53,10 +60,10 @@ public class BatchControlExecutor implements ActionExecutor {
         List<DeviceCommand> commands = new ArrayList<>();
         try {
             for (Device device : targets) {
-                commands.add(deviceCommandService.dispatch(device.getCode(), "OFF", "AGENT"));
+                commands.add(deviceCommandService.dispatch(device.getCode(), targetCommand, "AGENT"));
             }
         } catch (Exception e) {
-            return new ExecutorResult(CommandStatus.FAILED, "FAILED：批量关闭下发中断: " + e.getMessage()
+            return new ExecutorResult(CommandStatus.FAILED, "FAILED：批量" + verb + "下发中断: " + e.getMessage()
                     + "（已下发 " + commands.size() + "/" + targets.size() + " 台）");
         }
 
@@ -92,18 +99,18 @@ public class BatchControlExecutor implements ActionExecutor {
         }
 
         int unconfirmed = commands.size() - confirmed - failed - timedOut;
-        String summary = "共下发 " + commands.size() + " 台关闭命令："
+        String summary = "共下发 " + commands.size() + " 台" + verb + "命令："
                 + confirmed + " 台已确认执行" + (failed > 0 ? "，" + failed + " 台执行失败" : "")
                 + (timedOut > 0 ? "，" + timedOut + " 台回执超时" : "")
                 + (unconfirmed > 0 ? "，" + unconfirmed + " 台尚未获得设备执行确认" : "");
 
         if (failed > 0) {
-            return new ExecutorResult(CommandStatus.FAILED, "FAILED：批量关闭未完全成功，" + summary);
+            return new ExecutorResult(CommandStatus.FAILED, "FAILED：批量" + verb + "未完全成功，" + summary);
         }
         if (confirmed == commands.size()) {
-            return new ExecutorResult(CommandStatus.DEVICE_CONFIRMED, "DEVICE_CONFIRMED：批量关闭完成，" + summary);
+            return new ExecutorResult(CommandStatus.DEVICE_CONFIRMED, "DEVICE_CONFIRMED：批量" + verb + "完成，" + summary);
         }
         return new ExecutorResult(CommandStatus.COMMAND_ACCEPTED,
-                "COMMAND_ACCEPTED：批量关闭命令已下发，" + summary + "，请以设备状态为准");
+                "COMMAND_ACCEPTED：批量" + verb + "命令已下发，" + summary + "，请以设备状态为准");
     }
 }

@@ -42,16 +42,22 @@ public class DeviceService {
     // 获取所有设备 DTO（用于 /api/devices）
     public List<DeviceDTO> getAllDeviceDTOs() {
         return deviceRepository.findAll().stream()
-                .map(device -> new DeviceDTO(
-                        device.getId(),
-                        device.getCode(),
-                        device.getLocation(),
-                        device.getLongitude(),
-                        device.getLatitude(),
-                        device.getStatus(),
-                        device.getLatestLux(),
-                        device.getLastSeen()
-                ))
+                .map(device -> {
+                    DeviceDTO dto = new DeviceDTO(
+                            device.getId(),
+                            device.getCode(),
+                            device.getLocation(),
+                            device.getLongitude(),
+                            device.getLatitude(),
+                            device.getStatus(),
+                            device.getLatestLux(),
+                            device.getLastSeen()
+                    );
+                    // 【5号代做·需与3号对账】透出灯开关状态与绑定状态（实体已有字段）
+                    dto.setLampStatus(device.getLampStatus());
+                    dto.setBound(device.getBound());
+                    return dto;
+                })
                 .collect(Collectors.toList());
     }
 

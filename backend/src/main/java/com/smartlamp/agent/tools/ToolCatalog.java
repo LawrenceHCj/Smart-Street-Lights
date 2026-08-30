@@ -14,6 +14,7 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 
@@ -66,11 +67,25 @@ public class ToolCatalog {
                         parameters(properties().set("query", prop("string", "检索关键词或用户问题")), "query"),
                         this::searchKnowledge, "READ", false),
                 new ToolSpec("get_device_list", "设备列表（系统实时数据）", "system_data",
-                        "查询系统实时数据：全部路灯设备列表（编号、位置、在线状态、最新光照、最近心跳时间）。当用户问系统里有哪些设备或整体运行状态时使用。无输入参数。",
+                        "查询系统实时数据：全部路灯设备列表（编号、位置、在线状态、灯开关状态 lampStatus、最新光照、最近心跳时间、绑定状态）。每台设备附带预计算的 statusText 汇总字段（如\"在线·灯开\"、\"离线·灯关\"）与整体 summary 汇总字段（各状态设备数及编号）。当用户问系统里有哪些设备、哪些灯是开的/关的、整体运行状态时使用；回答设备在线/灯开关状态时直接引用 statusText 与 summary，不要自行组合判断 status 与 lampStatus，也不要重新数数。无输入参数。",
                         parameters(properties()),
-                        args -> systemDataNode("devices", objectMapper.valueToTree(agentTools.getDeviceList())), "READ", false),
+                        args -> {
+                            List<DeviceDTO> devices = agentTools.getDeviceList();
+                            ArrayNode deviceArray = (ArrayNode) objectMapper.valueToTree(devices);
+                            for (JsonNode device : deviceArray) {
+                                ObjectNode item = (ObjectNode) device;
+                                String lamp = item.path("lampStatus").asText(null);
+                                String lampText = "ON".equals(lamp) ? "灯开"
+                                        : "OFF".equals(lamp) ? "灯关" : "未上报灯状态";
+                                item.put("statusText", item.path("status").asText("") + "·" + lampText);
+                            }
+                            ObjectNode node = systemDataNode();
+                            node.set("devices", deviceArray);
+                            node.put("summary", buildDeviceSummary(devices));
+                            return node;
+                        }, "READ", false),
                 new ToolSpec("get_device_status", "设备状态（系统实时数据）", "system_data",
-                        "查询系统实时数据：单台设备的当前状态。当用户问某台具体设备是否在线、当前状态如何时使用。",
+                        "查询系统实时数据：单台设备的当前状态（含在线状态、灯开关状态 lampStatus、最新光照）。当用户问某台具体设备是否在线、灯是否开着、当前状态如何时使用。",
                         parameters(properties().set("deviceCode", prop("string", "设备编号，例如 lamp001")), "deviceCode"),
                         args -> {
                             String code = args.path("deviceCode").asText();
@@ -97,7 +112,7 @@ public class ToolCatalog {
                                 .set("end", prop("number", "结束毫秒时间戳（可选）")), "deviceCode"),
                         this::telemetryHistory, "READ", false),
                 new ToolSpec("get_alert_history", "告警记录（系统实时数据）", "system_data",
-                        "查询系统实时数据：告警记录，可按设备编号过滤。当用户问告警、设备异常、为什么离线时使用。",
+                        "查询告警历史记录，可按设备编号过滤，结果含已恢复（RECOVERED）的历史告警。注意：历史告警不代表设备当前状态，判断设备当前在线/离线必须使用设备状态或设备列表工具的 status 字段。当用户问告警历史、曾发生过的异常、为什么之前离线时使用。",
                         parameters(properties().set("deviceCode", prop("string", "设备编号（可选，不传查全部）"))),
                         args -> {
                             String code = args.hasNonNull("deviceCode") ? args.path("deviceCode").asText() : null;
@@ -110,17 +125,21 @@ public class ToolCatalog {
                         args -> systemDataNode("config", objectMapper.valueToTree(agentTools.getLinkageConfig())), "READ", false),
                 // ============ 控制意图工具（只生成待确认 Action，绝不执行控制） ============
                 new ToolSpec("turn_on_light", "开灯控制请求", "action",
-                        "提交单台路灯开灯请求（低风险写操作，需要用户确认）。工具会自动检查：设备是否存在、是否在线、当前开关状态；检查通过后生成待确认 Action，不会真正控制设备。仅支持单台设备，绝不用于批量操作。",
+                        "提交单台路灯开灯请求（低风险写操作，免二次确认）。工具会自动检查：当前用户是否具备控制权限（admin/operator，无权限返回 REJECTED_NO_PERMISSION）、设备是否存在、是否在线、当前开关状态；检查通过后由系统直接执行并返回真实结果。仅支持单台设备，绝不用于批量操作。",
                         parameters(properties().set("deviceCode", prop("string", "设备编号，例如 lamp001")), "deviceCode"),
-                        agentActionTools::requestTurnOn, "LOW_WRITE", true),
+                        agentActionTools::requestTurnOn, "LOW_WRITE", false),
                 new ToolSpec("turn_off_light", "关灯控制请求", "action",
-                        "提交单台路灯关灯请求（低风险写操作，需要用户确认）。工具会自动检查：设备是否存在、是否在线、当前开关状态；检查通过后生成待确认 Action，不会真正控制设备。仅支持单台设备，绝不用于批量操作。",
+                        "提交单台路灯关灯请求（低风险写操作，免二次确认）。工具会自动检查：当前用户是否具备控制权限（admin/operator，无权限返回 REJECTED_NO_PERMISSION）、设备是否存在、是否在线、当前开关状态；检查通过后由系统直接执行并返回真实结果。仅支持单台设备，绝不用于批量操作。",
                         parameters(properties().set("deviceCode", prop("string", "设备编号，例如 lamp001")), "deviceCode"),
-                        agentActionTools::requestTurnOff, "LOW_WRITE", true),
+                        agentActionTools::requestTurnOff, "LOW_WRITE", false),
                 new ToolSpec("turn_off_all", "关闭全部设备请求", "action",
-                        "提交关闭全部在线路灯的批量请求（低风险写操作，必须用户二次确认后才会执行，绝不自动执行）。当用户表达批量关闭意图时（如\"把所有路灯都关掉\"\"关闭所有路灯\"\"全部关掉\"）必须调用本工具，不得只复述知识库内容；\"全部打开\"等其他批量操作不开放。",
+                        "提交关闭全部在线路灯的批量请求（低风险写操作，必须用户二次确认后才会执行，绝不自动执行）。当用户表达批量关闭意图时（如\"把所有路灯都关掉\"\"关闭所有路灯\"\"全部关掉\"）必须调用本工具，不得只复述知识库内容。",
                         parameters(properties()),
                         agentActionTools::requestTurnOffAll, "LOW_WRITE", true),
+                new ToolSpec("turn_on_all", "打开全部设备请求", "action",
+                        "提交打开全部在线路灯的批量请求（低风险写操作，必须用户二次确认后才会执行，绝不自动执行）。当用户表达批量开灯意图时（如\"把所有路灯都打开\"\"打开所有路灯\"\"全部打开\"）必须调用本工具，不得只复述知识库内容。",
+                        parameters(properties()),
+                        agentActionTools::requestTurnOnAll, "LOW_WRITE", true),
                 new ToolSpec("set_light_threshold", "光照阈值修改请求", "action",
                         "提交光照阈值修改请求（低风险写操作，需要用户确认）。参数 value 必须是指定的明确数值（合法范围 10-500，由后端业务规则定义，你不得自行决定合法范围）。用户只说\"调高一点\"等模糊说法时，不得调用本工具猜测数值：必须先调用 get_linkage_config 查询当前配置，再向用户给出明确候选值，等用户确认具体数值后调用。",
                         parameters(properties().set("value", prop("number", "目标开灯阈值（10-500 之间的明确数值）")), "value"),
@@ -190,6 +209,32 @@ public class ToolCatalog {
             item.put("score", m.score());
         }
         return node;
+    }
+
+    // 设备列表汇总（供大模型直接引用，避免模型自己数数出错）：
+    // 按在线/离线、灯开/灯关/未上报灯状态分别汇总设备数与编号
+    private String buildDeviceSummary(List<DeviceDTO> devices) {
+        List<String> online = new ArrayList<>();
+        List<String> offline = new ArrayList<>();
+        List<String> lampOn = new ArrayList<>();
+        List<String> lampOff = new ArrayList<>();
+        List<String> lampUnknown = new ArrayList<>();
+        for (DeviceDTO device : devices) {
+            ("ONLINE".equals(device.getStatus()) ? online : offline).add(device.getCode());
+            String lampStatus = device.getLampStatus();
+            if ("ON".equals(lampStatus)) {
+                lampOn.add(device.getCode());
+            } else if ("OFF".equals(lampStatus)) {
+                lampOff.add(device.getCode());
+            } else {
+                lampUnknown.add(device.getCode());
+            }
+        }
+        return "共" + devices.size() + "台设备：在线" + online.size() + "台（" + String.join("、", online) + "），"
+                + "离线" + offline.size() + "台（" + String.join("、", offline) + "）；"
+                + "灯打开" + lampOn.size() + "台（" + String.join("、", lampOn) + "），"
+                + "灯关闭" + lampOff.size() + "台（" + String.join("、", lampOff) + "），"
+                + "未上报灯状态" + lampUnknown.size() + "台（" + String.join("、", lampUnknown) + "）。";
     }
 
     private ObjectNode telemetryHistory(JsonNode args) {

@@ -89,7 +89,18 @@ public class AgentActionTools {
     // 批量关闭请求（权限调整后开放）：仍需二次确认——生成 PENDING Action 返回 actionId，
     // 用户在前端聊天确认卡片点击确认后经确认接口执行（绝不自动执行）
     public ObjectNode requestTurnOffAll(JsonNode args) {
-        ObjectNode node = actionNode(ActionType.TURN_OFF_ALL);
+        return requestBatchControl(ActionType.TURN_OFF_ALL, "关闭");
+    }
+
+    // 批量开灯请求（对称开放）：仍需二次确认——生成 PENDING Action 返回 actionId，
+    // 用户在前端聊天确认卡片点击确认后经确认接口执行（绝不自动执行）
+    public ObjectNode requestTurnOnAll(JsonNode args) {
+        return requestBatchControl(ActionType.TURN_ON_ALL, "打开");
+    }
+
+    // 批量开/关共用逻辑：角色校验 → 只读快照在线且已绑定设备 → 生成待确认 Action（绝不自动执行）
+    private ObjectNode requestBatchControl(ActionType type, String verb) {
+        ObjectNode node = actionNode(type);
 
         // 角色权限校验（与网页控制同一规则）
         String role = currentRole();
@@ -108,17 +119,17 @@ public class AgentActionTools {
         }
         if (targets.isEmpty()) {
             node.put("status", "REJECTED_NO_TARGETS");
-            node.put("message", "当前没有在线且已绑定的设备，无需执行批量关闭");
+            node.put("message", "当前没有在线且已绑定的设备，无需执行批量" + verb);
             return node;
         }
         String originalState = "在线设备 " + targets.size() + " 台: "
                 + targets.stream().map(Device::getCode).collect(java.util.stream.Collectors.joining(","));
 
-        // 生成待确认 Action（批量关闭必须用户确认，绝不由模型自动执行）
-        AgentAction action = actionManager.create(ActionType.TURN_OFF_ALL, "device", "all", Map.of(), currentUser());
+        // 生成待确认 Action（批量操作必须用户确认，绝不由模型自动执行）
+        AgentAction action = actionManager.create(type, "device", "all", Map.of(), currentUser());
         action.setConversationId(AgentCallContext.getConversationId());
         action.setOriginalState(originalState);
-        action.setTargetState("全部关闭（" + targets.size() + " 台）");
+        action.setTargetState("全部" + verb + "（" + targets.size() + " 台）");
         agentActionAuditService.recordCreated(action);
 
         node.put("status", ActionStatus.PENDING_CONFIRMATION.name());
@@ -126,10 +137,10 @@ public class AgentActionTools {
         node.put("targetId", "all");
         node.put("riskLevel", action.getRiskLevel().name());
         node.put("expiresAt", action.getExpiresAt());
-        node.put("summary", "关闭全部设备（" + targets.size() + " 台在线）");
+        node.put("summary", verb + "全部设备（" + targets.size() + " 台在线）");
         node.put("originalState", originalState);
         node.put("targetState", action.getTargetState());
-        node.put("message", "已生成批量关闭请求（" + originalState
+        node.put("message", "已生成批量" + verb + "请求（" + originalState
                 + "）。请向用户展示确认卡片并等待确认，未确认绝不执行。");
         return node;
     }
