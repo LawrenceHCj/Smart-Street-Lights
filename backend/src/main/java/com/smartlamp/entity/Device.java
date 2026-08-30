@@ -30,7 +30,9 @@ public class Device {
     private Double latestCurrent;
     private Double latestPower;
     private Double latestEnergy;
+    /** 最后一次心跳/通信时间（毫秒 epoch），用于离线判定。 */
     private Long lastSeen;
+    /** 最后一次真实遥测数据采集时间（毫秒 epoch），用于健康评分时判断遥测是否陈旧。 */
     private Long lastTelemetryAt;
     private LocalDateTime createdAt;
 }

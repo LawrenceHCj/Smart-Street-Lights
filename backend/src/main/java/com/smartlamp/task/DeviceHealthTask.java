@@ -5,9 +5,11 @@ import com.smartlamp.repository.DeviceRepository;
 import com.smartlamp.service.DeviceHealthService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Slf4j
@@ -20,25 +22,49 @@ public class DeviceHealthTask {
     @Autowired
     private DeviceHealthService healthService;
 
-    // @Scheduled 里的 fixedRate = 60000 代表每 60 秒（1分钟）执行一次。
-    // 为了答辩时能立刻看到效果，现在先设成 1 分钟。
-    // 等项目完全定稿要上线时，可以改成每天凌晨 2 点执行：@Scheduled(cron = "0 0 2 * * ?")
-    @Scheduled(fixedRate = 60000)
+    @Autowired
+    private com.smartlamp.repository.DeviceHealthReportRepository healthReportRepository;
+
+    /** 健康报告保留天数，默认 7 天，过期自动清理。 */
+    @Value("${health.report.retention-days:7}")
+    private int retentionDays;
+
+    // 改为每小时巡检一次（原 60 秒一次会造成每台设备每天约 1440 条记录，表无限增长）。
+    // 演示时可临时在 application.yml 中覆盖为更短间隔；生产环境可改为每天凌晨执行：
+    // @Scheduled(cron = "0 0 2 * * ?")
+    @Scheduled(fixedDelayString = "${health.report.inspect-interval-ms:3600000}")
     public void autoInspectDevices() {
         log.info("开始执行自动化设备健康巡检...");
 
         // 1. 从数据库查出所有的路灯设备
         List<Device> devices = deviceRepository.findAll();
-        int count = 0;
+        int evaluated = 0;
+        int skipped = 0;
 
-        // 2. 挨个丢进写好的白盒规则引擎里算分
+        // 2. 逐个丢进写好的白盒规则引擎里算分
         for (Device device : devices) {
-            if ("ONLINE".equalsIgnoreCase(device.getStatus())) {
-                healthService.evaluateDeviceHealth(device);
-                count++;
+            // evaluateDeviceHealth 现在会在"无遥测/遥测陈旧"时返回 null，不再写入满分报告
+            var report = healthService.evaluateDeviceHealth(device);
+            if (report == null) {
+                skipped++;
+            } else {
+                evaluated++;
             }
         }
 
-        log.info("自动化巡检完成，共为 {} 台在线设备生成了体检报告！", count);
+        log.info("自动化巡检完成：共 {} 台设备，{} 台生成报告，{} 台因数据不足/陈旧跳过",
+                devices.size(), evaluated, skipped);
+
+        // 3. 清理过期报告，避免表无限增长
+        try {
+            LocalDateTime before = LocalDateTime.now().minusDays(retentionDays);
+            int deleted = healthReportRepository.deleteOlderThan(before);
+            if (deleted > 0) {
+                log.info("已清理 {} 条超过 {} 天的健康报告", deleted, retentionDays);
+            }
+        } catch (Exception e) {
+            // 保留策略失败不应中断巡检
+            log.warn("清理过期健康报告失败: {}", e.getMessage());
+        }
     }
 }
