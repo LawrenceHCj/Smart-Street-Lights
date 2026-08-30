@@ -114,6 +114,8 @@ class PromptProviderTest {
         assertThat(prompt).contains("批量操作");
         assertThat(prompt).contains("仅\"关闭全部设备\"开放");
         assertThat(prompt).contains("绝不自动执行");
+        assertThat(prompt).contains("必须调用 turn_off_all 工具提交请求");
+        assertThat(prompt).contains("不得只复述知识库");
         assertThat(prompt).contains("必须追问");
         assertThat(prompt).contains("不得自行猜测");
     }
