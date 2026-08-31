@@ -74,15 +74,27 @@
             </div>
           </template>
         </el-table>
-        <div v-if="users.length" class="pager">
+        <div v-if="users.length > 10" class="pager" aria-label="用户列表分页">
+          <div class="pager-summary">
+            <span>共 <strong class="num">{{ users.length }}</strong> 个账号</span>
+            <el-select
+              :model-value="pageSize"
+              size="small"
+              class="page-size-select"
+              aria-label="每页显示数量"
+              @change="onSize"
+            >
+              <el-option v-for="size in pageSizes" :key="size" :label="`每页 ${size} 个`" :value="size" />
+            </el-select>
+          </div>
           <el-pagination
+            v-if="users.length > pageSize"
             :current-page="page"
             :page-size="pageSize"
             :total="users.length"
-            :page-sizes="[10, 20, 50]"
-            layout="total, sizes, prev, pager, next"
+            layout="prev, pager, next"
+            background
             @current-change="onPage"
-            @size-change="onSize"
           />
         </div>
       </div>
@@ -129,6 +141,7 @@ const form = reactive({ username: '', password: '', role: 'operator' as UserRole
 // 客户端分页：用户列表分页展示
 const page = ref(1)
 const pageSize = ref(10)
+const pageSizes = [10, 20, 50]
 const pagedUsers = computed(() => {
   const start = (page.value - 1) * pageSize.value
   return users.value.slice(start, start + pageSize.value)
@@ -264,8 +277,37 @@ onMounted(load)
 }
 .pager {
   display: flex;
-  justify-content: flex-end;
-  padding-top: 12px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 58px;
+  margin-top: 12px;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--border-subtle);
+}
+.pager-summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.pager-summary strong { color: var(--text-primary); font-size: 13px; }
+.page-size-select { width: 116px; }
+.pager :deep(.el-pagination) { --el-pagination-bg-color: transparent; --el-pagination-button-color: var(--text-secondary); --el-pagination-hover-color: var(--accent-deep); }
+.pager :deep(.el-pagination.is-background .btn-prev),
+.pager :deep(.el-pagination.is-background .btn-next),
+.pager :deep(.el-pagination.is-background .el-pager li) {
+  min-width: 34px;
+  height: 34px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 2px;
+  background: transparent;
+}
+.pager :deep(.el-pagination.is-background .el-pager li.is-active) {
+  border-color: var(--signal-strong);
+  color: var(--ink);
+  background: var(--signal);
 }
 .user-cell {
   display: flex;
@@ -305,6 +347,9 @@ onMounted(load)
     flex-direction: column;
     align-items: flex-start;
   }
+  .pager { align-items: stretch; flex-direction: column; }
+  .pager-summary { justify-content: space-between; }
+  .pager :deep(.el-pagination) { justify-content: center; }
 }
 /* Access roster */
 .users { max-width: 1320px; }

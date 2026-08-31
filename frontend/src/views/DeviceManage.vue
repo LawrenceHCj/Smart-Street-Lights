@@ -222,7 +222,7 @@
       </template>
     </el-drawer>
 
-    <el-dialog v-model="addVisible" title="添加路灯设备" width="min(420px, calc(100vw - 32px))" class="device-dialog">
+    <el-dialog v-model="addVisible" title="添加路灯设备" width="min(760px, calc(100vw - 32px))" class="device-dialog">
       <el-form label-position="top" @submit.prevent="submitAdd">
         <el-form-item label="设备编号" required>
           <el-input v-model="form.code" placeholder="如 SL-020" :prefix-icon="ReadingLamp" />
@@ -230,6 +230,33 @@
         <el-form-item label="安装位置">
           <el-input v-model="form.location" placeholder="如 建设路 8 号" />
         </el-form-item>
+        <fieldset class="location-picker">
+          <legend>地图选点 <span>必填</span></legend>
+          <p class="picker-hint">点击地图确定安装点，坐标会自动填写。也可使用键盘在下方精确调整经纬度。</p>
+          <div class="picker-map-wrap">
+            <div
+              ref="pickerMapRef"
+              class="picker-map"
+              role="region"
+              aria-label="设备安装位置地图；鼠标点击地图选点，键盘用户请使用下方经纬度输入框"
+            ></div>
+            <div v-if="pickerMapLoading" class="picker-map-state" role="status">
+              <el-icon class="is-loading" aria-hidden="true"><Loading /></el-icon>
+              <span>正在加载地图…</span>
+            </div>
+            <div v-else-if="pickerMapError" class="picker-map-state picker-map-error" role="alert">
+              <el-icon aria-hidden="true"><LocationInformation /></el-icon>
+              <strong>地图暂不可用</strong>
+              <span>{{ pickerMapError }}</span>
+              <el-button size="small" text type="primary" @click="initPickerMap">重新加载</el-button>
+            </div>
+            <div v-if="hasSelectedPoint" class="picker-selection" role="status" aria-live="polite">
+              <el-icon aria-hidden="true"><LocationInformation /></el-icon>
+              <span>已选位置</span>
+              <strong class="num">{{ form.longitude?.toFixed(6) }}, {{ form.latitude?.toFixed(6) }}</strong>
+            </div>
+          </div>
+        </fieldset>
         <div class="coordinate-grid" aria-describedby="coordinate-help">
           <el-form-item label="经度" required>
             <el-input-number v-model="form.longitude" :min="-180" :max="180" :precision="6" :step="0.000001" controls-position="right" placeholder="如 106.298038" />
@@ -238,7 +265,7 @@
             <el-input-number v-model="form.latitude" :min="-90" :max="90" :precision="6" :step="0.000001" controls-position="right" placeholder="如 29.593390" />
           </el-form-item>
         </div>
-        <p id="coordinate-help" class="coordinate-help">必填。请填写高德地图坐标拾取器给出的 GCJ-02 经度和纬度，设备将按此坐标显示在地图上。</p>
+        <p id="coordinate-help" class="coordinate-help">坐标采用 GCJ-02。地图不可用或需要精确微调时，可直接填写经纬度。</p>
       </el-form>
       <template #footer>
         <el-button @click="addVisible = false">取消</el-button>
@@ -249,8 +276,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, reactive, onMounted } from 'vue'
-import { CircleCheck, DataAnalysis, Loading, Plus, ReadingLamp, Refresh, Search, Warning } from '@element-plus/icons-vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { CircleCheck, DataAnalysis, Loading, LocationInformation, Plus, ReadingLamp, Refresh, Search, Warning } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, ElDatePicker } from 'element-plus'
 import {
   evaluateDeviceHealth,
@@ -262,6 +289,27 @@ import type { DeviceHealthReport, DeviceVO, HealthTelemetry } from '../api/devic
 import { addDevice, removeDevice } from '../api/deviceManage'
 import { probe } from '../api/helper'
 import NotReadyBanner from '../components/NotReadyBanner.vue'
+import { loadAMap } from '../utils/amap'
+
+interface PickerMapInstance {
+  add(item: PickerMarkerInstance): void
+  destroy(): void
+  on(event: 'click', handler: (event: PickerMapClickEvent) => void): void
+  setCenter(center: number[]): void
+}
+
+interface PickerMarkerInstance {
+  setPosition(position: number[]): void
+}
+
+interface PickerMapClickEvent {
+  lnglat: { getLng(): number; getLat(): number }
+}
+
+interface PickerAMapNamespace {
+  Map: new (element: HTMLDivElement, options: Record<string, unknown>) => PickerMapInstance
+  Marker: new (options: Record<string, unknown>) => PickerMarkerInstance
+}
 
 const devices = ref<DeviceVO[]>([])
 // 设备查找栏：按设备编号或位置实时过滤
@@ -276,6 +324,13 @@ const filteredDevices = computed(() => {
 const ready = ref(true)
 const addVisible = ref(false)
 const adding = ref(false)
+const pickerMapRef = ref<HTMLDivElement>()
+const pickerMapLoading = ref(false)
+const pickerMapError = ref('')
+const hasSelectedPoint = computed(() => Number.isFinite(form.longitude) && Number.isFinite(form.latitude))
+let pickerMap: PickerMapInstance | null = null
+let pickerMarker: PickerMarkerInstance | null = null
+let pickerAMap: PickerAMapNamespace | null = null
 const healthByDevice = ref<Record<string, DeviceHealthReport>>({})
 const healthLoadFailed = ref(false)
 const healthVisible = ref(false)
@@ -444,6 +499,76 @@ function openAdd() {
   addVisible.value = true
 }
 
+function defaultPickerCenter(): number[] {
+  const positioned = devices.value.filter(
+    (device) => Number.isFinite(device.longitude) && Number.isFinite(device.latitude),
+  )
+  if (!positioned.length) return [106.5516, 29.5630]
+  return [
+    positioned.reduce((sum, device) => sum + Number(device.longitude), 0) / positioned.length,
+    positioned.reduce((sum, device) => sum + Number(device.latitude), 0) / positioned.length,
+  ]
+}
+
+function setPickerPoint(longitude: number, latitude: number) {
+  form.longitude = Number(longitude.toFixed(6))
+  form.latitude = Number(latitude.toFixed(6))
+  const position = [form.longitude, form.latitude]
+  if (pickerMarker) {
+    pickerMarker.setPosition(position)
+  } else if (pickerAMap && pickerMap) {
+    pickerMarker = new pickerAMap.Marker({ position, anchor: 'bottom-center' })
+    pickerMap.add(pickerMarker)
+  }
+}
+
+async function initPickerMap() {
+  if (!pickerMapRef.value || !addVisible.value) return
+  pickerMapLoading.value = true
+  pickerMapError.value = ''
+  pickerMap?.destroy()
+  pickerMap = null
+  pickerMarker = null
+  try {
+    pickerAMap = await loadAMap() as PickerAMapNamespace
+    if (!pickerMapRef.value || !addVisible.value) return
+    const center = hasSelectedPoint.value ? [form.longitude!, form.latitude!] : defaultPickerCenter()
+    pickerMap = new pickerAMap.Map(pickerMapRef.value, {
+      zoom: 13,
+      center,
+      resizeEnable: true,
+      viewMode: '2D',
+    })
+    pickerMap.on('click', (event) => {
+      setPickerPoint(event.lnglat.getLng(), event.lnglat.getLat())
+    })
+    if (hasSelectedPoint.value) setPickerPoint(form.longitude!, form.latitude!)
+  } catch (error) {
+    pickerMapError.value = error instanceof Error ? error.message : '地图加载失败'
+  } finally {
+    pickerMapLoading.value = false
+  }
+}
+
+watch(addVisible, async (visible) => {
+  if (visible) {
+    await nextTick()
+    await initPickerMap()
+  } else {
+    pickerMap?.destroy()
+    pickerMap = null
+    pickerMarker = null
+  }
+})
+
+watch([() => form.longitude, () => form.latitude], ([longitude, latitude]) => {
+  if (!Number.isFinite(longitude) || !Number.isFinite(latitude) || !pickerMap) return
+  const position = [longitude!, latitude!]
+  if (pickerMarker) pickerMarker.setPosition(position)
+  else setPickerPoint(longitude!, latitude!)
+  pickerMap.setCenter(position)
+})
+
 async function submitAdd() {
   if (!form.code.trim()) {
     ElMessage.warning('请输入设备编号')
@@ -491,6 +616,8 @@ onMounted(() => {
   void load()
   void loadHealth()
 })
+
+onUnmounted(() => pickerMap?.destroy())
 </script>
 
 <style scoped>
@@ -709,6 +836,32 @@ onMounted(() => {
   font-size: 12px;
   line-height: 1.55;
 }
+.location-picker {
+  min-width: 0;
+  margin: 0 0 16px;
+  padding: 0;
+  border: 0;
+}
+.location-picker legend {
+  padding: 0;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+}
+.location-picker legend span { margin-left: 4px; color: var(--danger); font-size: 12px; }
+.picker-hint { margin: 6px 0 10px; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+.picker-map-wrap { position: relative; min-height: 270px; overflow: hidden; border: 1px solid var(--border-strong); background: var(--bg-surface-2); }
+.picker-map { width: 100%; height: 270px; }
+.picker-map:focus-visible { outline: 3px solid var(--accent-bright); outline-offset: -3px; }
+.picker-map-state { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px; background: var(--bg-surface-2); color: var(--text-muted); font-size: 12px; }
+.picker-map-error { flex-direction: column; padding: 24px; text-align: center; }
+.picker-map-error > .el-icon { color: var(--warn); font-size: 24px; }
+.picker-map-error strong { color: var(--text-primary); }
+.picker-selection { position: absolute; right: 12px; bottom: 12px; max-width: calc(100% - 24px); min-height: 40px; padding: 8px 12px; display: flex; align-items: center; gap: 7px; background: rgba(6,34,29,.92); color: #f5fff8; box-shadow: 0 4px 16px rgba(0,0,0,.18); font-size: 11px; backdrop-filter: blur(8px); }
+.picker-selection strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:global(.device-dialog) { max-height: calc(100vh - 32px); display: flex; flex-direction: column; margin-block: 16px !important; }
+:global(.device-dialog .el-dialog__header), :global(.device-dialog .el-dialog__footer) { flex: none; }
+:global(.device-dialog .el-dialog__body) { min-height: 0; overflow-y: auto; }
 
 @media (max-width: 560px) {
   .page-intro {
@@ -719,6 +872,8 @@ onMounted(() => {
     grid-template-columns: 1fr;
     gap: 0;
   }
+  .picker-map-wrap, .picker-map { min-height: 230px; height: 230px; }
+  .picker-selection { left: 10px; right: 10px; justify-content: center; }
   .health-overview { align-items: flex-start; flex-direction: column; }
   .report-time { align-items: flex-start; }
   .drawer-actions > span { display: none; }
