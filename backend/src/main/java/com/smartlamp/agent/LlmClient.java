@@ -64,7 +64,9 @@ public class LlmClient {
         return response.content();
     }
 
-    // 多轮对话（支持工具）：tools 为 OpenAI Function Calling 描述，可为 null
+    // 多轮对话（支持工具）：tools 为 OpenAI Function Calling 描述，可为 null。
+    // 连接层失败（Connection reset / 超时等 IOException）自动重试 1 次——
+    // 网络抖动常见于空闲连接后的首次请求；HTTP 业务错误（4xx/5xx）不重试。
     public ChatResponse completeChat(List<ObjectNode> messages, ArrayNode tools) {
         if (!isConfigured()) throw new LlmException("LLM not configured");
 
@@ -79,19 +81,44 @@ public class LlmClient {
         }
         body.put("temperature", 0.3);
 
-        try {
-            HttpRequest request = HttpRequest.newBuilder(URI.create(url))
-                    .timeout(Duration.ofMillis(timeoutMs > 0 ? timeoutMs : 30_000))
-                    .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + apiKey)
-                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
-                    .build();
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if (response.statusCode() != 200) {
-                throw new LlmException("LLM API 返回 " + response.statusCode());
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return callChat(url, body);
+            } catch (LlmException e) {
+                throw e;
+            } catch (java.io.IOException e) {
+                if (attempt >= 2) throw new LlmException("LLM API 调用失败: " + e.getMessage());
+                sleepBeforeRetry();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new LlmException("LLM API 调用被中断: " + e.getMessage());
             }
+        }
+    }
 
+    private void sleepBeforeRetry() {
+        try {
+            Thread.sleep(400);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    // 单次 HTTP 调用（解析响应；网络异常以 IOException 上抛供重试逻辑处理，解析失败视为业务错误不重试）
+    private ChatResponse callChat(String url, ObjectNode body) throws java.io.IOException, InterruptedException {
+        HttpRequest request = HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofMillis(timeoutMs > 0 ? timeoutMs : 30_000))
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + apiKey)
+                .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
+                .build();
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+        if (response.statusCode() != 200) {
+            throw new LlmException("LLM API 返回 " + response.statusCode());
+        }
+
+        try {
             JsonNode root = objectMapper.readTree(response.body());
             JsonNode msg = root.path("choices").path(0).path("message");
 
@@ -108,7 +135,7 @@ public class LlmClient {
         } catch (LlmException e) {
             throw e;
         } catch (Exception e) {
-            throw new LlmException("LLM API 调用失败: " + e.getMessage());
+            throw new LlmException("LLM API 响应解析失败: " + e.getMessage());
         }
     }
 

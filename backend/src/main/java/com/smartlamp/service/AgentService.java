@@ -5,10 +5,14 @@ import com.smartlamp.agent.LlmException;
 import com.smartlamp.agent.PromptProvider;
 import com.smartlamp.agent.Retriever;
 import com.smartlamp.agent.conversation.AgentMessage;
+import com.smartlamp.agent.tools.AgentTools;
 import com.smartlamp.agent.tools.ToolCatalog;
 import com.smartlamp.dto.AskResponse;
+import com.smartlamp.dto.DeviceDTO;
+import com.smartlamp.dto.LinkageConfigDTO;
 import com.smartlamp.dto.PendingActionInfo;
 import com.smartlamp.dto.SourceItem;
+import com.smartlamp.entity.Alarm;
 import com.smartlamp.exception.BadRequestException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -45,6 +49,10 @@ public class AgentService {
     @Autowired
     private ToolCatalog toolCatalog;
 
+    // 本地降级兜底（LLM 不可用时按关键词规则查询系统真实数据）
+    @Autowired
+    private AgentTools agentTools;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     // 一次已执行的工具调用（用于回答结束后组装 sources）
@@ -69,9 +77,19 @@ public class AgentService {
 
         String text = question.trim();
 
-        // 2. 大模型未配置时直接走本地知识库回答
+        // 2. 设备实时状态类问题（"哪些/现在/当前" + 在线/灯/光照/告警/阈值话题）走确定性直答：
+        //    由系统数据规则直接回答，不依赖大模型可用性——知识库只有维护排查知识，
+        //    答不了"当前事实"，且大模型网络抖动时此类问题仍能稳定回答
+        try {
+            AskResponse direct = directRealtimeAnswer(text);
+            if (direct != null) return direct;
+        } catch (Exception e) {
+            log.warn("实时状态直答失败，回退常规流程: {}", e.getMessage());
+        }
+
+        // 3. 大模型未配置时直接走本地知识库回答
         if (!llmClient.isConfigured()) {
-            return localResponse(retriever.retrieve(text, TOP_K));
+            return localResponse(retriever.retrieve(text, TOP_K), text);
         }
 
         // 3. Agent 循环：模型选工具 → 执行 → 结果回填 → 模型综合回答
@@ -117,7 +135,7 @@ public class AgentService {
         } catch (Exception e) {
             // 4. 大模型不可用/流程失败时降级，绝不影响接口可用性
             log.warn("智能体流程失败，降级为本地知识库回答: {}", e.getMessage());
-            return localResponse(retriever.retrieve(text, TOP_K));
+            return localResponse(retriever.retrieve(text, TOP_K), text);
         }
     }
 
@@ -206,19 +224,164 @@ public class AgentService {
         return null;
     }
 
-    // 本地降级回答：拼接命中条目正文；无命中时返回明确提示
-    private AskResponse localResponse(List<Retriever.KbMatch> matches) {
-        String answer;
-        List<SourceItem> sources;
-        if (matches.isEmpty()) {
-            answer = "知识库中暂未找到与该问题相关的内容，请补充更多细节后重试。";
-            sources = List.of();
-        } else {
-            answer = matches.stream().map(m -> m.entry().getContent()).collect(Collectors.joining(" "));
-            sources = matches.stream()
+    // 本地降级回答（LLM 不可用时的确定性兜底）：
+    // 1. 设备实时状态类问题（"哪些/现在/当前" + 在线/灯/光照/告警/阈值话题）→ 直接查系统真实数据
+    //    ——知识库只有维护排查知识，不可能回答"当前事实"，且不命中时先不输出"没找到"；
+    // 2. 其余问题知识库优先：命中 → 拼接命中条目正文；
+    // 3. 知识库无命中 → 按关键词规则查询系统真实数据兜底（设备状态/光照/告警/配置）；
+    // 4. 均无结果 → 明确提示未找到（绝不编造）。
+    private AskResponse localResponse(List<Retriever.KbMatch> matches, String question) {
+        if (isRealtimeQuestion(question)) {
+            AskResponse dataAnswer = systemDataFallback(question);
+            if (dataAnswer != null) return dataAnswer;
+        }
+        if (!matches.isEmpty()) {
+            String answer = matches.stream().map(m -> m.entry().getContent()).collect(Collectors.joining(" "));
+            List<SourceItem> sources = matches.stream()
                     .map(m -> new SourceItem(m.entry().getTitle(), "knowledge", (double) m.score()))
                     .collect(Collectors.toList());
+            return new AskResponse(answer, sources);
         }
-        return new AskResponse(answer, sources);
+        AskResponse dataAnswer = systemDataFallback(question);
+        if (dataAnswer != null) return dataAnswer;
+        return new AskResponse(
+                "未找到相关信息：知识库与系统数据中均未找到与该问题相关的内容，请换个问法或补充更多细节。",
+                List.of());
+    }
+
+    // 实时状态类问题判断：问"当前事实"（哪些/现在/当前/几台…）+ 设备/数据话题
+    private boolean isRealtimeQuestion(String question) {
+        boolean ask = containsAny(question, "哪些", "哪个", "几台", "多少", "现在", "当前", "有没有");
+        boolean topic = containsAny(question, "在线", "离线", "灯", "路灯", "设备",
+                "光照", "亮度", "勒克斯", "lux", "告警", "报警", "阈值", "自动", "联动");
+        return ask && topic;
+    }
+
+    // 主链路确定性直答入口：实时状态类问题直接查系统数据（规则不命中返回 null 走常规流程）
+    private AskResponse directRealtimeAnswer(String question) {
+        if (!isRealtimeQuestion(question)) return null;
+        return systemDataFallback(question);
+    }
+
+    // ============ 系统数据兜底（确定性规则，仅陈述真实查询结果） ============
+
+    private boolean containsAny(String text, String... words) {
+        for (String w : words) {
+            if (text.contains(w)) return true;
+        }
+        return false;
+    }
+
+    // 按关键词规则回答设备状态类问题；规则不命中返回 null（由上层提示未找到）
+    private AskResponse systemDataFallback(String question) {
+        List<DeviceDTO> devices = agentTools.getDeviceList();
+        if (devices == null) devices = List.of();
+        boolean lampTopic = containsAny(question, "灯", "路灯", "设备");
+        boolean askWords = containsAny(question, "哪些", "哪个", "几台", "什么", "现在", "当前", "状态", "有没有");
+        boolean onState = containsAny(question, "开着的", "是开的", "开着", "打开的", "是打开的", "点亮", "亮着");
+        boolean offState = containsAny(question, "关着的", "是关的", "关着", "关闭的", "是关闭的", "熄灭");
+
+        // 1. 在线/离线状态
+        if (containsAny(question, "在线", "离线", "上线", "掉线")) {
+            return deviceAnswer(onlineStatusAnswer(devices));
+        }
+        // 2. 灯开关状态（问"哪些灯是开着的"这类）
+        if (lampTopic && askWords && (onState || offState)) {
+            return deviceAnswer(lampStatusAnswer(devices, onState));
+        }
+        // 3. 光照值
+        if (containsAny(question, "光照", "亮度", "勒克斯", "lux")) {
+            return deviceAnswer(luxAnswer(devices));
+        }
+        // 4. 告警
+        if (containsAny(question, "告警", "报警", "异常")) {
+            return new AskResponse(alarmAnswer(),
+                    List.of(new SourceItem("告警记录（系统实时数据）", "system_data", 1.0)));
+        }
+        // 5. 联动配置
+        if (containsAny(question, "阈值", "自动", "联动", "滞回")) {
+            return new AskResponse(configAnswer(),
+                    List.of(new SourceItem("联动配置（系统实时数据）", "system_data", 1.0)));
+        }
+        return null;
+    }
+
+    private AskResponse deviceAnswer(String answer) {
+        return new AskResponse(answer,
+                List.of(new SourceItem("设备列表（系统实时数据）", "system_data", 1.0)));
+    }
+
+    private String deviceName(DeviceDTO d) {
+        return d.getCode() + (d.getLocation() != null && !d.getLocation().isBlank()
+                ? "（" + d.getLocation() + "）" : "");
+    }
+
+    // 在线/离线汇总（按 status 如实统计）
+    private String onlineStatusAnswer(List<DeviceDTO> devices) {
+        List<String> online = new ArrayList<>();
+        List<String> offline = new ArrayList<>();
+        for (DeviceDTO d : devices) {
+            ("ONLINE".equals(d.getStatus()) ? online : offline).add(deviceName(d));
+        }
+        return "系统实时数据：当前共 " + devices.size() + " 台设备，在线 " + online.size() + " 台"
+                + (online.isEmpty() ? "。" : "：" + String.join("、", online) + "。")
+                + (offline.isEmpty() ? "" : "离线 " + offline.size() + " 台：" + String.join("、", offline) + "。")
+                + "\n信息来源：系统实时数据（设备列表）。";
+    }
+
+    // 灯开关状态汇总（按 lampStatus 如实统计；未上报的单独说明）
+    private String lampStatusAnswer(List<DeviceDTO> devices, boolean onTopic) {
+        List<String> on = new ArrayList<>();
+        List<String> off = new ArrayList<>();
+        List<String> unknown = new ArrayList<>();
+        for (DeviceDTO d : devices) {
+            if ("ON".equals(d.getLampStatus())) on.add(deviceName(d));
+            else if ("OFF".equals(d.getLampStatus())) off.add(deviceName(d));
+            else unknown.add(deviceName(d));
+        }
+        if (onTopic) {
+            return "系统实时数据：当前灯打开的共 " + on.size() + " 台"
+                    + (on.isEmpty() ? "。" : "：" + String.join("、", on) + "。")
+                    + (off.isEmpty() ? "" : "灯关闭的 " + off.size() + " 台：" + String.join("、", off) + "。")
+                    + (unknown.isEmpty() ? "" : "未上报灯状态的 " + unknown.size() + " 台：" + String.join("、", unknown) + "。")
+                    + "\n信息来源：系统实时数据（设备列表）。";
+        }
+        return "系统实时数据：当前灯关闭的共 " + off.size() + " 台"
+                + (off.isEmpty() ? "。" : "：" + String.join("、", off) + "。")
+                + (on.isEmpty() ? "" : "灯打开的 " + on.size() + " 台：" + String.join("、", on) + "。")
+                + (unknown.isEmpty() ? "" : "未上报灯状态的 " + unknown.size() + " 台：" + String.join("、", unknown) + "。")
+                + "\n信息来源：系统实时数据（设备列表）。";
+    }
+
+    // 各设备最新光照值（无数据的设备单独说明）
+    private String luxAnswer(List<DeviceDTO> devices) {
+        List<String> parts = new ArrayList<>();
+        List<String> none = new ArrayList<>();
+        for (DeviceDTO d : devices) {
+            if (d.getLatestLux() == null) none.add(d.getCode());
+            else parts.add(deviceName(d) + " " + d.getLatestLux() + " 勒克斯");
+        }
+        return "系统实时数据：各设备最新光照值——" + String.join("；", parts) + "。"
+                + (none.isEmpty() ? "" : none.size() + " 台设备暂无光照数据：" + String.join("、", none) + "。")
+                + "\n信息来源：系统实时数据（设备列表）。";
+    }
+
+    // 告警汇总（区分未恢复与已恢复，不把历史告警说成当前事实）
+    private String alarmAnswer() {
+        List<Alarm> alarms = agentTools.getAlertHistory();
+        if (alarms == null) alarms = List.of();
+        long active = alarms.stream().filter(a -> "OPEN".equals(a.getStatus()) || "ACTIVE".equals(a.getStatus())).count();
+        long recovered = alarms.size() - active;
+        return "系统实时数据：共 " + alarms.size() + " 条告警记录，其中未恢复 " + active
+                + " 条、已恢复 " + recovered + " 条。\n信息来源：系统实时数据（告警记录）。";
+    }
+
+    // 联动配置汇总（如实读取当前配置）
+    private String configAnswer() {
+        LinkageConfigDTO config = agentTools.getLinkageConfig();
+        if (config == null) return "系统实时数据：当前联动配置不可用。\n信息来源：系统实时数据（联动配置）。";
+        return "系统实时数据：自动控制当前" + (config.isEnabled() ? "已开启" : "已关闭")
+                + "，开灯阈值 " + config.getThreshold() + " 勒克斯，滞回值 " + config.getHysteresis()
+                + "。\n信息来源：系统实时数据（联动配置）。";
     }
 }

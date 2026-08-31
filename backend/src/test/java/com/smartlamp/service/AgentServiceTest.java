@@ -98,6 +98,7 @@ class AgentServiceTest {
         ReflectionTestUtils.setField(agentService, "promptProvider", new PromptProvider());
         ReflectionTestUtils.setField(agentService, "llmClient", llmClient);
         ReflectionTestUtils.setField(agentService, "toolCatalog", toolCatalog);
+        ReflectionTestUtils.setField(agentService, "agentTools", agentTools);
     }
 
     // 设置 admin 认证上下文（控制类测试需要角色权限）
@@ -150,6 +151,55 @@ class AgentServiceTest {
                 .isInstanceOf(BadRequestException.class);
     }
 
+    // ============ 本地降级增强：知识库无命中 → 系统数据兜底（5号） ============
+
+    @Test
+    void 未配置大模型时灯状态问题走系统数据兜底() {
+        DeviceDTO lamp001 = new DeviceDTO(1L, "lamp001", "北门", "ONLINE", 58.5, 1700000000000L);
+        lamp001.setLampStatus("ON");
+        DeviceDTO lamp002 = new DeviceDTO(2L, "lamp002", "东门", "ONLINE", 61.0, 1700000000000L);
+        lamp002.setLampStatus("OFF");
+        when(deviceService.getAllDeviceDTOs()).thenReturn(List.of(lamp001, lamp002));
+
+        AskResponse result = agentService.ask("哪些灯是打开的？");
+
+        assertThat(result.getAnswer()).contains("灯打开的共 1 台").contains("lamp001（北门）");
+        assertThat(result.getSources()).anyMatch(s -> "system_data".equals(s.getSection()));
+    }
+
+    @Test
+    void 未配置大模型时在线状态问题走系统数据兜底() {
+        DeviceDTO lamp001 = new DeviceDTO(1L, "lamp001", "北门", "ONLINE", 58.5, 1700000000000L);
+        DeviceDTO lamp002 = new DeviceDTO(2L, "lamp002", "东门", "OFFLINE", 61.0, 1700000000000L);
+        when(deviceService.getAllDeviceDTOs()).thenReturn(List.of(lamp001, lamp002));
+
+        AskResponse result = agentService.ask("现在有哪些设备在线？");
+
+        assertThat(result.getAnswer()).contains("在线 1 台").contains("离线 1 台");
+        assertThat(result.getSources()).anyMatch(s -> "system_data".equals(s.getSection()));
+    }
+
+    @Test
+    void 未配置大模型且无规则命中时返回未找到() {
+        AskResponse result = agentService.ask("今天天气怎么样？");
+
+        assertThat(result.getAnswer()).contains("未找到相关信息");
+        assertThat(result.getSources()).isEmpty();
+    }
+
+    @Test
+    void 实时状态类问题不走大模型直接系统数据回答() {
+        DeviceDTO lamp001 = new DeviceDTO(1L, "lamp001", "北门", "ONLINE", 58.5, 1700000000000L);
+        when(deviceService.getAllDeviceDTOs()).thenReturn(List.of(lamp001));
+
+        AskResponse result = agentService.ask("现在有哪些设备在线？");
+
+        assertThat(result.getAnswer()).contains("在线 1 台");
+        assertThat(result.getSources()).anyMatch(s -> "system_data".equals(s.getSection()));
+        // 确定性直答：此类问题不调用大模型（无论大模型是否已配置）
+        verify(llmClient, never()).completeChat(anyList(), any(ArrayNode.class));
+    }
+
     // ============ 场景1：普通维修问题 → 知识工具 ============
 
     @Test
@@ -179,7 +229,7 @@ class AgentServiceTest {
                 .thenReturn(responseWithToolCalls(toolCall("call-1", "get_device_status", "{\"deviceCode\":\"lamp001\"}")))
                 .thenReturn(response("系统实时数据：lamp001 当前在线。"));
 
-        AskResponse result = agentService.ask("lamp001现在在线吗？");
+        AskResponse result = agentService.ask("lamp001 运行情况如何？");
 
         assertThat(result.getAnswer()).contains("在线");
         assertThat(result.getSources()).hasSize(1);
@@ -250,7 +300,7 @@ class AgentServiceTest {
                 .thenReturn(responseWithToolCalls(toolCall("call-1", "get_device_status", "{\"deviceCode\":\"lamp999\"}")))
                 .thenReturn(response("系统实时数据：未找到编号为 lamp999 的设备。"));
 
-        AskResponse result = agentService.ask("lamp999现在在线吗？");
+        AskResponse result = agentService.ask("lamp999 存在吗？");
 
         assertThat(result.getAnswer()).contains("未找到");
         assertThat(result.getSources()).hasSize(1);
@@ -267,7 +317,7 @@ class AgentServiceTest {
                 .thenReturn(responseWithToolCalls(toolCall("call-1", "get_device_status", "{\"deviceCode\":\"lamp001\"}")))
                 .thenReturn(response("系统实时数据暂时不可用，请稍后重试。"));
 
-        AskResponse result = agentService.ask("lamp001现在在线吗？");
+        AskResponse result = agentService.ask("帮我查一下 lamp001 的数据");
 
         assertThat(result.getAnswer()).contains("不可用");
         assertThat(result.getSources()).hasSize(1);
@@ -311,7 +361,7 @@ class AgentServiceTest {
                 .thenReturn(responseWithToolCalls(toolCall("call-1", "get_device_status", "{\"deviceCode\":\"lamp001\"}")))
                 .thenReturn(response("lamp001 在线"));
 
-        agentService.ask("lamp001现在在线吗？");
+        agentService.ask("帮我查一下 lamp001 的状态");
 
         // 第二次调用的消息里必须包含工具结果（role=tool、带 source 标注）
         org.mockito.ArgumentCaptor<List<ObjectNode>> captor = org.mockito.ArgumentCaptor.forClass(List.class);
@@ -606,7 +656,7 @@ class AgentServiceTest {
                 historyMessage("user", "lamp002 呢？"),
                 historyMessage("assistant", "lamp002 离线"));
 
-        agentService.ask("它现在有什么告警？", history);
+        agentService.ask("它的告警情况如何？", history);
 
         org.mockito.ArgumentCaptor<List<ObjectNode>> captor = org.mockito.ArgumentCaptor.forClass(List.class);
         verify(llmClient).completeChat(captor.capture(), any(ArrayNode.class));
@@ -619,7 +669,7 @@ class AgentServiceTest {
         assertThat(messages.get(3).path("content").asText()).contains("lamp002 呢");
         assertThat(messages.get(4).path("content").asText()).contains("lamp002 离线");
         assertThat(messages.get(5).path("content").asText())
-                .contains("【用户问题】").contains("它现在有什么告警？");
+                .contains("【用户问题】").contains("它的告警情况如何？");
     }
 
     // ============ 测试辅助 ============

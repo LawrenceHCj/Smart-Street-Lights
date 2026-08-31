@@ -221,6 +221,19 @@
           <button class="inline-action" type="button" :disabled="loading" @click="retry">重新发送</button>
         </div>
         <div class="input-bar">
+          <!-- 【5号代做·需与2号对账】语音输入：按住说话；单击后开始聆听（停顿约3秒自动发送） -->
+          <el-tooltip content="按住说话；单击后开始聆听，说完停顿约 3 秒自动发送" placement="top">
+            <el-button
+              class="mic-btn"
+              :class="{ on: voiceState === 'listening' }"
+              circle
+              aria-label="语音输入：按住说话，或单击后开始聆听"
+              @mousedown.prevent="micDown"
+              @mouseup="micUp"
+            >
+              <el-icon aria-hidden="true"><Microphone /></el-icon>
+            </el-button>
+          </el-tooltip>
           <label class="sr-only" for="chat-question">维护问题</label>
           <el-input
             id="chat-question"
@@ -248,14 +261,25 @@
           </el-tooltip>
         </div>
         <div id="chat-input-hint" class="input-hint">Enter 发送 · Shift+Enter 换行</div>
+        <!-- 【5号代做·需与2号对账】语音状态栏与播报开关 -->
+        <div v-if="voiceSupported" class="voice-bar">
+          <span class="voice-status" :class="voiceState">
+            <i class="voice-dot"></i>{{ voiceStateText }}
+            <template v-if="voiceState === 'listening' && transcript">：{{ transcript }}</template>
+          </span>
+          <button class="voice-tts" type="button" @click="toggleTts">{{ ttsOn ? '播报已开启' : '播报已关闭' }}</button>
+        </div>
+        <div v-else class="voice-bar unsupported">
+          当前浏览器不支持语音交互（请使用 Edge / Chrome，并允许麦克风权限）；语音识别由浏览器在线服务处理
+        </div>
       </div>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, watch } from 'vue'
-import { Delete, Document, Lock, Menu, Plus, Promotion, ReadingLamp, WarningFilled } from '@element-plus/icons-vue'
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
+import { Delete, Document, Lock, Menu, Microphone, Plus, Promotion, ReadingLamp, WarningFilled } from '@element-plus/icons-vue'
 import { ElDatePicker, ElMessage, ElMessageBox, ElPagination } from 'element-plus'
 import {
   ask,
@@ -268,6 +292,8 @@ import {
 } from '../api/agent'
 import type { AgentMessage, AgentActionResult, Conversation, PendingAction, Source } from '../api/agent'
 import { getCurrentRole } from '../utils/auth'
+import { useVoice } from '../composables/useVoice'
+import type { VoiceState } from '../composables/useVoice'
 
 interface Msg {
   role: 'user' | 'bot'
@@ -494,6 +520,9 @@ async function send(retrying = false) {
     if (r.conversationId) currentId.value = r.conversationId
     failedQuestion.value = ''
     refreshConversations()
+    // 【5号代做·需与2号对账】语音播报回答；有待确认操作时提示在卡片上处理
+    // （播报文案刻意避开"确认/取消/小路灯"等关键词，防止麦克风收到播报回声误触发）
+    voice.speak(r.answer + (r.action ? '。已生成待处理请求，请在卡片上点击按钮处理。' : ''))
   } catch {
     sendError.value = '问题发送失败，请检查服务连接后重试。'
   } finally {
@@ -563,6 +592,89 @@ async function cancelPending(m: Msg) {
     m.actionLoading = false
   }
 }
+
+// ===== 【5号代做·需与2号对账】语音交互（Edge/Chrome 原生 Web Speech API，零后端改动） =====
+
+const voiceSupported = ('SpeechRecognition' in window) || ('webkitSpeechRecognition' in window)
+const voiceState = ref<VoiceState>('idle')
+const transcript = ref('')
+const ttsOn = ref(true)
+let micDownAt = 0
+
+const voice = useVoice({
+  onCommand: (text) => {
+    if (loading.value) {
+      voice.speak('请稍候，正在处理上一个问题。')
+      return
+    }
+    askQuick(text)
+  },
+  onKeyword: (keyword) => (keyword === 'confirm' ? voiceConfirm() : voiceCancel()),
+  onStateChange: (s) => {
+    voiceState.value = s
+  },
+  onInterim: (t) => {
+    transcript.value = t
+  },
+  onError: (msg) => ElMessage.error(msg),
+})
+
+const voiceStateText = computed(
+  () =>
+    ({
+      idle: '按住麦克风说话；单击后开始聆听，说完停顿约 3 秒自动发送',
+      listening: '正在聆听…（说完停顿约 3 秒自动发送；可直接说"确认"或"取消"处理待确认操作）',
+      speaking: '正在播报…',
+    })[voiceState.value],
+)
+
+// 按住说话：长按（≥400ms）松开即发送；
+// 单击聆听：单击后持续聆听，说完停顿约 3 秒自动发送——鼠标移开按钮不影响聆听
+function micDown() {
+  if (loading.value) return
+  micDownAt = Date.now()
+  voice.startPtt()
+}
+function micUp() {
+  const held = Date.now() - micDownAt
+  if (held >= 400) voice.endPtt()
+}
+
+function toggleTts() {
+  ttsOn.value = !ttsOn.value
+  voice.setTts(ttsOn.value)
+}
+
+/** 最近一条待确认卡片（语音确认/取消与点击卡片走完全相同的 actionId 链路） */
+function pendingMsg(): Msg | undefined {
+  return [...messages.value].reverse().find(
+    (m) =>
+      m.role === 'bot' &&
+      m.action &&
+      m.action.status === 'PENDING_CONFIRMATION' &&
+      !m.actionResult,
+  )
+}
+async function voiceConfirm() {
+  const m = pendingMsg()
+  if (!m) {
+    voice.speak('当前没有待确认的操作')
+    return
+  }
+  await confirmPending(m)
+  voice.speak(m.actionResult || '操作已处理')
+}
+async function voiceCancel() {
+  const m = pendingMsg()
+  if (!m) {
+    voice.speak('当前没有待确认的操作')
+    return
+  }
+  await cancelPending(m)
+  voice.speak(m.actionResult || '已取消')
+}
+
+onUnmounted(() => voice.stopAll())
 
 async function confirmDelete(c: Conversation) {
   try {
@@ -932,6 +1044,78 @@ onMounted(async () => {
   color: var(--text-muted);
   text-align: right;
   user-select: none;
+}
+
+/* 【5号代做·需与2号对账】语音输入按钮与状态栏 */
+.mic-btn {
+  width: 42px;
+  height: 42px;
+  flex: none;
+  color: #8ba39a;
+}
+.mic-btn:hover {
+  color: var(--signal, #d0ff6f);
+}
+.mic-btn.on {
+  color: var(--signal, #d0ff6f);
+  border-color: var(--signal, #d0ff6f);
+  background: rgba(208, 255, 111, 0.1);
+}
+.voice-bar {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 18px;
+  font-size: 11.5px;
+  color: #6f877f;
+}
+.voice-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.voice-status.listening {
+  color: var(--signal, #d0ff6f);
+}
+.voice-status.speaking {
+  color: var(--accent-bright);
+}
+.voice-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+.voice-status.listening .voice-dot {
+  animation: voicePulse 1.2s infinite ease-in-out;
+}
+@keyframes voicePulse {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.voice-tts {
+  border: 0;
+  background: transparent;
+  color: #6f877f;
+  font-size: 11.5px;
+  font-family: inherit;
+  cursor: pointer;
+  flex: none;
+}
+.voice-tts:hover {
+  color: var(--signal, #d0ff6f);
 }
 
 @media (max-width: 900px) {

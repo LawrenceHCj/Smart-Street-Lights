@@ -767,3 +767,13 @@ FAIL
 ---
 
 （后续阶段记录继续追加到本文件末尾）
+
+---
+
+（2026-08-31 任务）：本地运营启动（非开发阶段，未改代码）。
+
+启动链路：Windows Docker Desktop（原本停止）→ WSL Ubuntu `docker compose up -d`（mysql 127.0.0.1:3307 健康 + mosquitto 1883）→ WSL `mvn spring-boot:run` 后端 8080 → WSL `npm run dev` 前端 5173。浏览器访问 http://localhost:5173（admin/123456）。
+
+（实施摘要）：冒烟全绿——登录返回 token；/api/devices 返回 6 台设备真实数据；/api/agent/ask 走 DeepSeek 返回带 sources 的知识库回答；Windows→5173→/api→8080 代理链路登录成功。设备当前全部 OFFLINE 属正常（4号模拟器未启动、无心跳上报）。
+
+（阶段待办）：无新增。遗留：本机没有浏览器自动化工具（chromium-cli），页面渲染未截图验证，建议 5号 打开浏览器人工确认；关机后需重启 Docker Desktop 并按上述顺序拉起服务。
