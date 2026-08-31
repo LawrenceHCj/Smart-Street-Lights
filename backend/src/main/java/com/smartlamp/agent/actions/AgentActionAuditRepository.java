@@ -11,4 +11,7 @@ public interface AgentActionAuditRepository extends JpaRepository<AgentActionAud
     Optional<AgentActionAudit> findByActionId(String actionId);
 
     List<AgentActionAudit> findAllByOrderByRequestedAtDesc();
+
+    /** 指定设备、指定时间之后的控制审计记录（预测性维护统计命令失败率用，requestedAt 为 epoch ms） */
+    List<AgentActionAudit> findByTargetIdAndRequestedAtAfterOrderByRequestedAtDesc(String targetId, Long requestedAt);
 }

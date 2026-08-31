@@ -19,4 +19,7 @@ public interface AlarmRepository extends JpaRepository<Alarm, Long> {
 
     @Query("SELECT a FROM Alarm a WHERE a.deviceId = :deviceId AND a.type = '离线' AND a.status IN ('OPEN', 'ACKED')")
     List<Alarm> findUnrecoveredOfflineAlarms(@Param("deviceId") String deviceId);
+
+    /** 指定设备的全部离线告警（预测性维护统计离线频率用，离线告警会合并 occurrenceCount） */
+    List<Alarm> findByDeviceIdAndTypeOrderByTsDesc(String deviceId, String type);
 }

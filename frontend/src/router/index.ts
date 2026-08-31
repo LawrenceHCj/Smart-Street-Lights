@@ -15,6 +15,7 @@ const router = createRouter({
         { path: 'monitor', name: 'monitor', component: () => import('../views/Monitor.vue'), meta: { title: '实时监控' } },
         { path: 'control', name: 'control', component: () => import('../views/Control.vue'), meta: { title: '灯控管理' } },
         { path: 'alarms', name: 'alarms', component: () => import('../views/Alarms.vue'), meta: { title: '告警中心' } },
+        { path: 'risk', name: 'risk', component: () => import('../views/RiskPrediction.vue'), meta: { title: '故障预测' } },
         { path: 'devices', name: 'devices', component: () => import('../views/DeviceManage.vue'), meta: { title: '设备管理' } },
         { path: 'users', name: 'users', component: () => import('../views/Users.vue'), meta: { title: '用户权限' } },
         { path: 'chat', name: 'chat', component: () => import('../views/Chat.vue'), meta: { title: '智能问答' } },
