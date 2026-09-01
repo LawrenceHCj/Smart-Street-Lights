@@ -55,14 +55,20 @@ public class ActionService {
 
     // 设备类目标二次校验（只读）：确认时设备可能已被删除 / 离线 / 状态已变化
     private void checkDeviceForConfirm(AgentAction action) {
-        // 批量开/关：确认时复查仍有在线且已绑定设备（状态可能已变化）
+        // 批量开/关：确认时复查仍有在线且已绑定设备（状态可能已变化；区域限定词按同一规则过滤）
         if (action.getActionType() == ActionType.TURN_OFF_ALL
                 || action.getActionType() == ActionType.TURN_ON_ALL) {
+            String keyword = action.getArguments().get("locationKeyword") instanceof String s ? s : null;
             long online = deviceService.getAllDevices().stream()
                     .filter(d -> Boolean.TRUE.equals(d.getBound()) && "ONLINE".equals(d.getStatus()))
+                    .filter(d -> keyword == null
+                            || d.getCode() != null && d.getCode().contains(keyword)
+                            || d.getLocation() != null && d.getLocation().contains(keyword))
                     .count();
             if (online == 0) {
-                reject(action, "确认时校验未通过：设备状态已变化，当前没有在线且已绑定的设备，无需执行");
+                reject(action, "确认时校验未通过：设备状态已变化，当前没有匹配"
+                        + (keyword != null ? "区域\"" + keyword + "\"" : "")
+                        + "的在线且已绑定设备，无需执行");
             }
             return;
         }

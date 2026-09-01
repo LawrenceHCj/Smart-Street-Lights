@@ -45,15 +45,21 @@ public class BatchControlExecutor implements ActionExecutor {
         String targetCommand = turnOn ? "ON" : "OFF";
         String verb = turnOn ? "打开" : "关闭";
 
-        // 1. 目标设备 = 已绑定且在线（只读检查；不满足的设备跳过，绝不向离线设备下发）
+        // 区域限定词（可选）：确认时按同一规则过滤（编号/位置包含关键词）
+        String keyword = action.getArguments().get("locationKeyword") instanceof String s ? s : null;
+
+        // 1. 目标设备 = 已绑定且在线（且匹配区域限定词）——只读检查；不满足的设备跳过，绝不向离线设备下发
         List<Device> targets = new ArrayList<>();
         for (Device device : deviceService.getAllDevices()) {
-            if (Boolean.TRUE.equals(device.getBound()) && "ONLINE".equals(device.getStatus())) {
+            if (Boolean.TRUE.equals(device.getBound()) && "ONLINE".equals(device.getStatus())
+                    && (keyword == null || matchesKeyword(device, keyword))) {
                 targets.add(device);
             }
         }
         if (targets.isEmpty()) {
-            return new ExecutorResult(CommandStatus.FAILED, "FAILED：当前没有在线且已绑定的设备，未执行任何控制");
+            return new ExecutorResult(CommandStatus.FAILED, keyword == null
+                    ? "FAILED：当前没有在线且已绑定的设备，未执行任何控制"
+                    : "FAILED：确认时已没有匹配区域\"" + keyword + "\"的在线已绑定设备，未执行任何控制");
         }
 
         // 2. 逐台下发（与网页控制同一 DeviceCommandService）
@@ -112,5 +118,11 @@ public class BatchControlExecutor implements ActionExecutor {
         }
         return new ExecutorResult(CommandStatus.COMMAND_ACCEPTED,
                 "COMMAND_ACCEPTED：批量" + verb + "命令已下发，" + summary + "，请以设备状态为准");
+    }
+
+    // 区域匹配：设备编号或位置包含限定词
+    private boolean matchesKeyword(Device device, String keyword) {
+        return device.getCode() != null && device.getCode().contains(keyword)
+                || device.getLocation() != null && device.getLocation().contains(keyword);
     }
 }

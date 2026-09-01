@@ -87,19 +87,21 @@ public class AgentActionTools {
     }
 
     // 批量关闭请求（权限调整后开放）：仍需二次确认——生成 PENDING Action 返回 actionId，
-    // 用户在前端聊天确认卡片点击确认后经确认接口执行（绝不自动执行）
+    // 用户在前端聊天确认卡片点击确认后经确认接口执行（绝不自动执行）。
+    // 支持区域限定：locationKeyword 非空时只操作该区域（编号/位置包含关键词）的在线路灯
     public ObjectNode requestTurnOffAll(JsonNode args) {
-        return requestBatchControl(ActionType.TURN_OFF_ALL, "关闭");
+        return requestBatchControl(ActionType.TURN_OFF_ALL, "关闭", args);
     }
 
     // 批量开灯请求（对称开放）：仍需二次确认——生成 PENDING Action 返回 actionId，
-    // 用户在前端聊天确认卡片点击确认后经确认接口执行（绝不自动执行）
+    // 用户在前端聊天确认卡片点击确认后经确认接口执行（绝不自动执行）。支持区域限定同上
     public ObjectNode requestTurnOnAll(JsonNode args) {
-        return requestBatchControl(ActionType.TURN_ON_ALL, "打开");
+        return requestBatchControl(ActionType.TURN_ON_ALL, "打开", args);
     }
 
-    // 批量开/关共用逻辑：角色校验 → 只读快照在线且已绑定设备 → 生成待确认 Action（绝不自动执行）
-    private ObjectNode requestBatchControl(ActionType type, String verb) {
+    // 批量开/关共用逻辑：角色校验 → 只读快照在线且已绑定设备（可按区域限定词过滤）
+    // → 生成待确认 Action（绝不自动执行）
+    private ObjectNode requestBatchControl(ActionType type, String verb, JsonNode args) {
         ObjectNode node = actionNode(type);
 
         // 角色权限校验（与网页控制同一规则）
@@ -110,39 +112,61 @@ public class AgentActionTools {
             return node;
         }
 
-        // 只读快照：当前在线且已绑定的设备
+        // 区域限定词（可选）：编号或位置包含该词的设备才参与批量操作
+        String keyword = args != null && args.hasNonNull("locationKeyword")
+                ? args.path("locationKeyword").asText().trim()
+                : null;
+        if (keyword != null && (keyword.isBlank() || keyword.length() > 32)) {
+            throw new BadRequestException("locationKeyword 必须是非空且不超过 32 字的区域/位置描述");
+        }
+
+        // 只读快照：当前在线且已绑定（且匹配区域限定词）的设备
         List<Device> targets = new ArrayList<>();
         for (Device device : deviceService.getAllDevices()) {
-            if (Boolean.TRUE.equals(device.getBound()) && "ONLINE".equals(device.getStatus())) {
+            if (Boolean.TRUE.equals(device.getBound()) && "ONLINE".equals(device.getStatus())
+                    && (keyword == null || matchesKeyword(device, keyword))) {
                 targets.add(device);
             }
         }
         if (targets.isEmpty()) {
             node.put("status", "REJECTED_NO_TARGETS");
-            node.put("message", "当前没有在线且已绑定的设备，无需执行批量" + verb);
+            node.put("message", keyword == null
+                    ? "当前没有在线且已绑定的设备，无需执行批量" + verb
+                    : "没有匹配区域\"" + keyword + "\"的在线已绑定设备，请核实区域或位置名称");
             return node;
         }
-        String originalState = "在线设备 " + targets.size() + " 台: "
+        String originalState = (keyword != null ? "区域\"" + keyword + "\"在线设备 " : "在线设备 ")
+                + targets.size() + " 台: "
                 + targets.stream().map(Device::getCode).collect(java.util.stream.Collectors.joining(","));
 
         // 生成待确认 Action（批量操作必须用户确认，绝不由模型自动执行）
-        AgentAction action = actionManager.create(type, "device", "all", Map.of(), currentUser());
+        Map<String, Object> arguments = keyword != null ? Map.of("locationKeyword", keyword) : Map.of();
+        String targetId = keyword != null ? keyword : "all";
+        AgentAction action = actionManager.create(type, "device", targetId, arguments, currentUser());
         action.setConversationId(AgentCallContext.getConversationId());
         action.setOriginalState(originalState);
-        action.setTargetState("全部" + verb + "（" + targets.size() + " 台）");
+        action.setTargetState((keyword != null ? verb + "该区域" : "全部" + verb) + "（" + targets.size() + " 台）");
         agentActionAuditService.recordCreated(action);
 
         node.put("status", ActionStatus.PENDING_CONFIRMATION.name());
         node.put("actionId", action.getActionId());
-        node.put("targetId", "all");
+        node.put("targetId", targetId);
         node.put("riskLevel", action.getRiskLevel().name());
         node.put("expiresAt", action.getExpiresAt());
-        node.put("summary", verb + "全部设备（" + targets.size() + " 台在线）");
+        node.put("summary", keyword != null
+                ? verb + "\"" + keyword + "\"区域路灯（" + targets.size() + " 台在线）"
+                : verb + "全部设备（" + targets.size() + " 台在线）");
         node.put("originalState", originalState);
         node.put("targetState", action.getTargetState());
         node.put("message", "已生成批量" + verb + "请求（" + originalState
                 + "）。请向用户展示确认卡片并等待确认，未确认绝不执行。");
         return node;
+    }
+
+    // 区域匹配：设备编号或位置包含限定词（如"东门"可匹配 lamp003 东门）
+    private boolean matchesKeyword(Device device, String keyword) {
+        return device.getCode() != null && device.getCode().contains(keyword)
+                || device.getLocation() != null && device.getLocation().contains(keyword);
     }
 
     // 设备控制请求（开灯/关灯，免确认自动执行）：

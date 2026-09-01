@@ -400,4 +400,42 @@ class ActionServiceTest {
                 .isEqualTo(ActionStatus.FAILED);
         assertThat(executorCalls).hasValue(0);
     }
+
+    // ============ 批量开/关区域限定（确认时按同一区域规则复查） ============
+
+    @Test
+    void 区域限定批量确认成功执行() {
+        actionGateway.registerExecutor(ActionType.TURN_OFF_ALL, action -> {
+            executorCalls.incrementAndGet();
+            return null;
+        });
+        Device a = onlineDevice("lamp003", "ON");
+        a.setLocation("东门");
+        when(deviceService.getAllDevices()).thenReturn(List.of(a));
+        AgentAction action = actionManager.create(ActionType.TURN_OFF_ALL, "device", "东门",
+                Map.of("locationKeyword", "东门"), OWNER);
+
+        AgentAction result = actionService.confirmAndExecute(action.getActionId(), OWNER, ROLE_ADMIN);
+
+        assertThat(result.getStatus()).isEqualTo(ActionStatus.SUCCESS);
+        assertThat(executorCalls).hasValue(1);
+    }
+
+    @Test
+    void 区域限定批量确认时已无匹配区域设备拒绝() {
+        actionGateway.registerExecutor(ActionType.TURN_OFF_ALL, action -> {
+            executorCalls.incrementAndGet();
+            return null;
+        });
+        when(deviceService.getAllDevices()).thenReturn(List.of(onlineDevice("lamp001", "ON")));
+        AgentAction action = actionManager.create(ActionType.TURN_OFF_ALL, "device", "东门",
+                Map.of("locationKeyword", "东门"), OWNER);
+
+        assertThatThrownBy(() -> actionService.confirmAndExecute(action.getActionId(), OWNER, ROLE_ADMIN))
+                .isInstanceOf(ActionRejectedException.class)
+                .hasMessageContaining("状态已变化");
+        assertThat(actionManager.find(action.getActionId()).orElseThrow().getStatus())
+                .isEqualTo(ActionStatus.FAILED);
+        assertThat(executorCalls).hasValue(0);
+    }
 }

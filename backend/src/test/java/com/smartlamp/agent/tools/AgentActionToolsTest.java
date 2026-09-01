@@ -479,4 +479,41 @@ class AgentActionToolsTest {
         assertThat(result.path("status").asText()).isEqualTo("REJECTED_NO_TARGETS");
         assertThat(result.path("actionId").asText()).isBlank();
     }
+
+    // ============ 批量开/关区域限定（只操作指定区域的在线路灯） ============
+
+    @Test
+    void 批量关闭限定区域只含匹配设备() {
+        Device a = onlineDevice("lamp001");
+        a.setLocation("北门入口");
+        Device b = onlineDevice("lamp003");
+        b.setLocation("东门");
+        when(deviceService.getAllDevices()).thenReturn(List.of(a, b));
+        setCurrentUser("admin");
+
+        JsonNode result = tools.requestTurnOffAll(
+                objectMapper.createObjectNode().put("locationKeyword", "东门"));
+
+        assertThat(result.path("status").asText()).isEqualTo(ActionStatus.PENDING_CONFIRMATION.name());
+        assertThat(result.path("summary").asText()).contains("东门").contains("1 台在线");
+        assertThat(result.path("targetId").asText()).isEqualTo("东门");
+        AgentAction action = actionManager.find(result.path("actionId").asText()).orElseThrow();
+        assertThat(action.getArguments()).containsEntry("locationKeyword", "东门");
+        assertThat(action.getOriginalState()).contains("lamp003").doesNotContain("lamp001");
+        // 仍必须二次确认，绝不自动执行
+        verify(deviceCommandService, never()).dispatch(any(), any(), any());
+    }
+
+    @Test
+    void 区域无匹配设备时批量拒绝() {
+        when(deviceService.getAllDevices()).thenReturn(List.of(onlineDevice("lamp001")));
+        setCurrentUser("admin");
+
+        JsonNode result = tools.requestTurnOffAll(
+                objectMapper.createObjectNode().put("locationKeyword", "西门"));
+
+        assertThat(result.path("status").asText()).isEqualTo("REJECTED_NO_TARGETS");
+        assertThat(result.path("message").asText()).contains("西门");
+        assertThat(result.path("actionId").asText()).isBlank();
+    }
 }
