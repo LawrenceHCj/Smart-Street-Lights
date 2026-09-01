@@ -8,6 +8,7 @@ export interface DeviceVO {
   longitude: number | null
   latitude: number | null
   status: 'ONLINE' | 'OFFLINE'
+  lampStatus: string | null
   latestLux: number | null
   lastSeen: number | null
 }

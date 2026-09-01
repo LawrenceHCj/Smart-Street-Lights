@@ -197,7 +197,7 @@ import type { ChartInstance } from '../utils/chart'
 import { loadAMap } from '../utils/amap'
 
 type RangeKey = '1h' | '24h' | '7d' | '30d'
-type MapFilter = 'online' | 'offline' | 'all'
+type MapFilter = 'lamp-on' | 'lamp-off' | 'offline' | 'all'
 
 interface MapInstance {
   add(items: MarkerInstance[]): void
@@ -258,8 +258,15 @@ const ranges: Array<{ value: RangeKey; label: string }> = [
   { value: '30d', label: '近 30 天' },
 ]
 
+/** 与地图标记配色保持一致：在线且 lampStatus=OFF 视为"已关灯"（灰），其余在线视为"开灯"（绿） */
+function isLampOff(device: DeviceVO): boolean {
+  return device.status === 'ONLINE' && device.lampStatus?.toUpperCase() === 'OFF'
+}
+
 const onlineCount = computed(() => devices.value.filter((device) => device.status === 'ONLINE').length)
 const offlineCount = computed(() => devices.value.filter((device) => device.status === 'OFFLINE').length)
+const lampOnCount = computed(() => devices.value.filter((device) => device.status === 'ONLINE' && !isLampOff(device)).length)
+const lampOffCount = computed(() => devices.value.filter(isLampOff).length)
 const onlineRate = computed(() => devices.value.length ? Math.round((onlineCount.value / devices.value.length) * 100) : 0)
 const rangeMs = computed(() => ({ '1h': 3_600_000, '24h': 86_400_000, '7d': 604_800_000, '30d': 2_592_000_000 })[range.value])
 const selectedRangeLabel = computed(() => ranges.find((item) => item.value === range.value)?.label ?? '')
@@ -270,7 +277,8 @@ const refreshText = computed(() => {
 })
 const mapFilters = computed(() => [
   { key: 'all' as const, label: '全部', count: devices.value.length },
-  { key: 'online' as const, label: '在线', count: onlineCount.value },
+  { key: 'lamp-on' as const, label: '在线且开灯', count: lampOnCount.value },
+  { key: 'lamp-off' as const, label: '在线但关灯', count: lampOffCount.value },
   { key: 'offline' as const, label: '离线', count: offlineCount.value },
 ])
 const statCards = computed(() => [
@@ -369,10 +377,16 @@ function devicePosition(device: DeviceVO, index: number) {
   return [lng + x, lat + y]
 }
 
+/** 在线设备的开关灯状态文案（lampStatus 未知时不显示开关状态） */
+function lampStateText(device: DeviceVO, online: boolean): string {
+  if (!online) return '离线'
+  return isLampOff(device) ? '在线 · 已关灯' : '在线'
+}
+
 function createMarkerContent(device: DeviceVO, online: boolean) {
   const element = document.createElement('span')
-  element.className = `lamp-marker ${online ? 'is-online' : 'is-offline'}`
-  element.title = `${device.code} · ${online ? '在线' : '离线'}`
+  element.className = `lamp-marker ${!online ? 'is-offline' : isLampOff(device) ? 'is-lamp-off' : 'is-online'}`
+  element.title = `${device.code} · ${lampStateText(device, online)}`
   element.setAttribute('aria-hidden', 'true')
   return element
 }
@@ -385,7 +399,7 @@ function createInfoContent(device: DeviceVO, online: boolean) {
   const location = document.createElement('span')
   location.textContent = device.location || '位置未标注'
   const state = document.createElement('span')
-  state.textContent = `${online ? '在线' : '离线'} · ${device.latestLux === null ? '暂无照度' : `${device.latestLux} Lux`}`
+  state.textContent = `${lampStateText(device, online)} · ${device.latestLux === null ? '暂无照度' : `${device.latestLux} Lux`}`
   root.append(title, location, state)
   return root
 }
@@ -397,7 +411,9 @@ function updateMarkers() {
   mapInstance.remove(markers)
   const shown = devices.value.filter((device) => (
     mapFilter.value === 'all'
-    || (mapFilter.value === 'online' ? device.status === 'ONLINE' : device.status === 'OFFLINE')
+    || (mapFilter.value === 'lamp-on' ? device.status === 'ONLINE' && !isLampOff(device) : false)
+    || (mapFilter.value === 'lamp-off' ? isLampOff(device) : false)
+    || (mapFilter.value === 'offline' ? device.status === 'OFFLINE' : false)
   ))
   markers = shown.map((device) => {
     const index = devices.value.findIndex((item) => item.code === device.code)
@@ -739,8 +755,13 @@ onUnmounted(() => {
   background: currentColor;
 }
 
-.legend-shape.online {
+.legend-shape.lamp-on {
   color: var(--ok);
+}
+
+/* 在线但已关灯：与地图灰色标记一致 */
+.legend-shape.lamp-off {
+  color: #8a968f;
 }
 
 .legend-shape.offline {
@@ -925,6 +946,12 @@ onUnmounted(() => {
 :deep(.lamp-marker.is-offline) {
   background: var(--danger);
   box-shadow: 0 0 0 4px var(--danger-glow), 0 2px 9px rgba(0, 0, 0, 0.5);
+}
+
+/* 在线但已关灯：灰色 */
+:deep(.lamp-marker.is-lamp-off) {
+  background: #8a968f;
+  box-shadow: 0 0 0 4px rgba(138, 150, 143, 0.3), 0 2px 9px rgba(0, 0, 0, 0.5);
 }
 
 :deep(.map-info) {

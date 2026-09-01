@@ -10,24 +10,21 @@ public class DeviceDTO {
     private Double longitude;
     private Double latitude;
     private String status;
+    private String lampStatus;
     private Double latestLux;
     private Long lastSeen;
 
     // 构造方法，从 Device 实体转换
     public DeviceDTO(Long id, String code, String location, Double longitude, Double latitude,
-                     String status, Double latestLux, Long lastSeen) {
+                     String status, String lampStatus, Double latestLux, Long lastSeen) {
         this.id = id;
         this.code = code;
         this.location = location;
         this.longitude = longitude;
         this.latitude = latitude;
         this.status = status;
+        this.lampStatus = lampStatus;
         this.latestLux = latestLux;
         this.lastSeen = lastSeen;
-    }
-
-    /** Kept for existing callers that do not yet provide map coordinates. */
-    public DeviceDTO(Long id, String code, String location, String status, Double latestLux, Long lastSeen) {
-        this(id, code, location, null, null, status, latestLux, lastSeen);
     }
 }

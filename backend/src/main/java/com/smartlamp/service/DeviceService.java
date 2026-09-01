@@ -49,6 +49,7 @@ public class DeviceService {
                         device.getLongitude(),
                         device.getLatitude(),
                         device.getStatus(),
+                        device.getLampStatus(),
                         device.getLatestLux(),
                         device.getLastSeen()
                 ))
@@ -106,7 +107,7 @@ public class DeviceService {
 
     public DeviceDTO toDTO(Device device) {
         return new DeviceDTO(device.getId(), device.getCode(), device.getLocation(), device.getLongitude(), device.getLatitude(), device.getStatus(),
-                device.getLatestLux(), device.getLastSeen());
+                device.getLampStatus(), device.getLatestLux(), device.getLastSeen());
     }
 
     public void updateLampStatus(Device device, String action) {
