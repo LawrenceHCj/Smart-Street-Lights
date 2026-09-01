@@ -1,5 +1,6 @@
 package com.smartlamp.agent.actions;
 
+import com.smartlamp.dto.BrightnessPeriodDTO;
 import com.smartlamp.dto.LinkageConfigDTO;
 import com.smartlamp.service.ConfigService;
 import org.junit.jupiter.api.BeforeEach;
@@ -11,6 +12,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Map;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -55,7 +57,10 @@ class ConfigControlExecutorTest {
 
     @Test
     void 合法阈值保存并保持其他配置字段不变() {
-        when(configService.getLinkageConfig()).thenReturn(linkage(true, 30, 10));
+        LinkageConfigDTO current = linkage(true, 30, 10);
+        current.setBrightnessScheduleEnabled(true);
+        current.setBrightnessPeriods(List.of(new BrightnessPeriodDTO("深夜", "00:00", 50)));
+        when(configService.getLinkageConfig()).thenReturn(current);
         AgentAction action = confirmedAction(ActionType.UPDATE_LUX_THRESHOLD, Map.of("value", 150));
 
         AgentAction result = actionGateway.execute(action.getActionId());
@@ -67,6 +72,8 @@ class ConfigControlExecutorTest {
         assertThat(captor.getValue().getThreshold()).isEqualTo(150);
         assertThat(captor.getValue().isEnabled()).isTrue();   // 其余字段保持不变
         assertThat(captor.getValue().getHysteresis()).isEqualTo(10);
+        assertThat(captor.getValue().getBrightnessScheduleEnabled()).isTrue();
+        assertThat(captor.getValue().getBrightnessPeriods()).hasSize(1);
     }
 
     // ============ 打开 / 关闭自动模式 ============

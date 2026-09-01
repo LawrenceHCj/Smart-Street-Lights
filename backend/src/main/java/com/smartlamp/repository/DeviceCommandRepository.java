@@ -10,6 +10,7 @@ import com.smartlamp.entity.enums.CommandStatus;
 
 public interface DeviceCommandRepository extends JpaRepository<DeviceCommand, Long> {
     Optional<DeviceCommand> findByCommandId(String commandId);
+    Optional<DeviceCommand> findFirstByDeviceCodeAndStatusOrderByUpdatedAtDesc(String deviceCode, CommandStatus status);
     List<DeviceCommand> findByStatusAndCreatedAtBefore(CommandStatus status, LocalDateTime cutoff);
     void deleteByDeviceCode(String deviceCode);
 }

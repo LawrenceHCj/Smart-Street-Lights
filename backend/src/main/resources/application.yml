@@ -36,3 +36,8 @@ agent:
 data-retention:
   light-point-days: 30
   dead-letter-days: 7
+
+# 分时亮度节能估算参数，可按当地电价和采用的碳排放核算口径覆盖。
+energy-savings:
+  electricity-price-yuan-per-kwh: ${ELECTRICITY_PRICE_YUAN_PER_KWH:0.60}
+  carbon-factor-kg-per-kwh: ${CARBON_FACTOR_KG_PER_KWH:0.57}

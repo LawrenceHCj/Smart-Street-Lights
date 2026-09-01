@@ -7,6 +7,7 @@ import com.smartlamp.repository.AlarmRepository;
 import com.smartlamp.repository.DeviceRepository;
 import com.smartlamp.repository.DeviceCommandRepository;
 import com.smartlamp.repository.DeviceHealthReportRepository;
+import com.smartlamp.repository.DeviceRiskPredictionRepository;
 import com.smartlamp.repository.LightPointRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -34,6 +35,9 @@ public class DeviceService {
     @Autowired
     private DeviceHealthReportRepository deviceHealthReportRepository;
 
+    @Autowired
+    private DeviceRiskPredictionRepository deviceRiskPredictionRepository;
+
     // 原有的获取所有设备实体（备用）
     public List<Device> getAllDevices() {
         return deviceRepository.findAll();
@@ -56,6 +60,7 @@ public class DeviceService {
                     // 【5号代做·需与3号对账】透出灯开关状态与绑定状态（实体已有字段）
                     dto.setLampStatus(device.getLampStatus());
                     dto.setBound(device.getBound());
+                    dto.setControlMode(normalizeControlMode(device.getControlMode()));
                     return dto;
                 })
                 .collect(Collectors.toList());
@@ -90,6 +95,7 @@ public class DeviceService {
         device.setBinding(binding == null ? "" : binding.trim());
         device.setBound(true);
         device.setLampStatus("OFF");
+        device.setControlMode("AUTO");
         device.setStatus("OFFLINE"); // 初始状态离线，等待心跳
         device.setLatestLux(null);
         device.setLastSeen(null);
@@ -111,8 +117,47 @@ public class DeviceService {
     }
 
     public DeviceDTO toDTO(Device device) {
-        return new DeviceDTO(device.getId(), device.getCode(), device.getLocation(), device.getLongitude(), device.getLatitude(), device.getStatus(),
+        DeviceDTO dto = new DeviceDTO(device.getId(), device.getCode(), device.getLocation(), device.getLongitude(), device.getLatitude(), device.getStatus(),
                 device.getLatestLux(), device.getLastSeen());
+        dto.setLampStatus(device.getLampStatus());
+        dto.setBound(device.getBound());
+        dto.setControlMode(normalizeControlMode(device.getControlMode()));
+        return dto;
+    }
+
+    @Transactional
+    public Device setControlMode(String code, String mode) {
+        Device device = getDeviceByCode(code);
+        if (device == null) return null;
+        device.setControlMode(normalizeRequestedMode(mode));
+        return deviceRepository.save(device);
+    }
+
+    @Transactional
+    public int setControlMode(List<String> codes, String mode) {
+        if (codes == null || codes.isEmpty()) return 0;
+        String normalized = normalizeRequestedMode(mode);
+        int updated = 0;
+        for (String code : codes.stream().filter(c -> c != null && !c.isBlank()).distinct().toList()) {
+            Device device = getDeviceByCode(code);
+            if (device == null) continue;
+            device.setControlMode(normalized);
+            deviceRepository.save(device);
+            updated++;
+        }
+        return updated;
+    }
+
+    private String normalizeRequestedMode(String mode) {
+        String normalized = mode == null ? "" : mode.trim().toUpperCase();
+        if (!"AUTO".equals(normalized) && !"MANUAL".equals(normalized)) {
+            throw new IllegalArgumentException("控制策略必须是 AUTO 或 MANUAL");
+        }
+        return normalized;
+    }
+
+    private String normalizeControlMode(String mode) {
+        return "MANUAL".equalsIgnoreCase(mode) ? "MANUAL" : "AUTO";
     }
 
     public void updateLampStatus(Device device, String action) {
@@ -131,6 +176,7 @@ public class DeviceService {
         alarmRepository.deleteByDeviceId(code);
         deviceCommandRepository.deleteByDeviceCode(code);
         deviceHealthReportRepository.deleteByDeviceCode(code);
+        deviceRiskPredictionRepository.deleteByDeviceCode(code);
         deviceRepository.delete(device);
         return true;
     }

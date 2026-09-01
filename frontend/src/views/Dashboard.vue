@@ -163,8 +163,8 @@
             </span>
             <span class="location" :title="device.location">{{ device.location || '未标注' }}</span>
             <span class="lux num">{{ device.latestLux ?? '—' }}<small v-if="device.latestLux !== null"> Lux</small></span>
-            <span class="device-status" :class="device.status === 'ONLINE' ? 'online' : 'offline'">
-              {{ device.status === 'ONLINE' ? '在线' : '离线' }}
+            <span class="device-status" :class="getLampState(device)">
+              {{ lampStateLabel(getLampState(device)) }}
             </span>
           </div>
           <div v-if="initialLoading && !devices.length" class="empty-state" role="status">正在加载设备列表</div>
@@ -195,9 +195,11 @@ import type { DashboardOverview, DeviceVO, LightPoint } from '../api/device'
 import { initLuxChart, luxLineOption } from '../utils/chart'
 import type { ChartInstance } from '../utils/chart'
 import { loadAMap } from '../utils/amap'
+import { compareDeviceCode } from '../utils/sort'
 
 type RangeKey = '1h' | '24h' | '7d' | '30d'
-type MapFilter = 'online' | 'offline' | 'all'
+type MapFilter = 'on' | 'off' | 'offline' | 'all'
+type LampState = 'on' | 'off' | 'offline'
 
 interface MapInstance {
   add(items: MarkerInstance[]): void
@@ -259,7 +261,9 @@ const ranges: Array<{ value: RangeKey; label: string }> = [
 ]
 
 const onlineCount = computed(() => devices.value.filter((device) => device.status === 'ONLINE').length)
-const offlineCount = computed(() => devices.value.filter((device) => device.status === 'OFFLINE').length)
+const offlineCount = computed(() => devices.value.length - onlineCount.value)
+const lightsOnCount = computed(() => devices.value.filter((device) => device.status === 'ONLINE' && device.lampStatus === 'ON').length)
+const lightsOffCount = computed(() => onlineCount.value - lightsOnCount.value)
 const onlineRate = computed(() => devices.value.length ? Math.round((onlineCount.value / devices.value.length) * 100) : 0)
 const rangeMs = computed(() => ({ '1h': 3_600_000, '24h': 86_400_000, '7d': 604_800_000, '30d': 2_592_000_000 })[range.value])
 const selectedRangeLabel = computed(() => ranges.find((item) => item.value === range.value)?.label ?? '')
@@ -270,13 +274,14 @@ const refreshText = computed(() => {
 })
 const mapFilters = computed(() => [
   { key: 'all' as const, label: '全部', count: devices.value.length },
-  { key: 'online' as const, label: '在线', count: onlineCount.value },
+  { key: 'on' as const, label: '开灯', count: lightsOnCount.value },
+  { key: 'off' as const, label: '关灯', count: lightsOffCount.value },
   { key: 'offline' as const, label: '离线', count: offlineCount.value },
 ])
 const statCards = computed(() => [
-  { key: 'total', label: '接入设备', value: overview.value.totalDevices, unit: '', sub: '全网设备总数', icon: Monitor, tone: 'neutral' },
-  { key: 'online', label: '在线设备', value: overview.value.onlineCount, unit: '', sub: `在线率 ${onlineRate.value}%`, icon: CircleCheck, tone: 'success' },
-  { key: 'offline', label: '离线设备', value: overview.value.offlineCount, unit: '', sub: overview.value.offlineCount ? '需要人工排查' : '全部运行正常', icon: CircleClose, tone: 'danger' },
+  { key: 'total', label: '接入设备', value: devices.value.length, unit: '', sub: '全网设备总数', icon: Monitor, tone: 'neutral' },
+  { key: 'online', label: '在线设备', value: onlineCount.value, unit: '', sub: `开灯 ${lightsOnCount.value} · 关灯 ${lightsOffCount.value} · 在线率 ${onlineRate.value}%`, icon: CircleCheck, tone: 'success' },
+  { key: 'offline', label: '离线设备', value: offlineCount.value, unit: '', sub: offlineCount.value ? '需要人工排查' : '全部运行正常', icon: CircleClose, tone: 'danger' },
   { key: 'avg', label: '平均照度', value: Math.round(overview.value.avgLux), unit: 'Lux', sub: '当前全网均值', icon: Sunny, tone: 'accent' },
 ])
 
@@ -299,7 +304,7 @@ async function refresh(manual = false) {
       failedRegions.push('汇总指标')
     }
     if (devicesResult.status === 'fulfilled') {
-      devices.value = devicesResult.value
+      devices.value = [...devicesResult.value].sort(compareDeviceCode)
       succeeded = true
       if (devices.value.length && !devices.value.some((device) => device.code === currentCode.value)) {
         currentCode.value = devices.value[0].code
@@ -369,15 +374,24 @@ function devicePosition(device: DeviceVO, index: number) {
   return [lng + x, lat + y]
 }
 
-function createMarkerContent(device: DeviceVO, online: boolean) {
+function getLampState(device: DeviceVO): LampState {
+  if (device.status !== 'ONLINE') return 'offline'
+  return device.lampStatus === 'ON' ? 'on' : 'off'
+}
+
+function lampStateLabel(state: LampState) {
+  return state === 'on' ? '开灯' : state === 'off' ? '关灯' : '离线'
+}
+
+function createMarkerContent(device: DeviceVO, state: LampState) {
   const element = document.createElement('span')
-  element.className = `lamp-marker ${online ? 'is-online' : 'is-offline'}`
-  element.title = `${device.code} · ${online ? '在线' : '离线'}`
+  element.className = `lamp-marker is-${state}`
+  element.title = `${device.code} · ${lampStateLabel(state)}`
   element.setAttribute('aria-hidden', 'true')
   return element
 }
 
-function createInfoContent(device: DeviceVO, online: boolean) {
+function createInfoContent(device: DeviceVO, stateValue: LampState) {
   const root = document.createElement('div')
   root.className = 'map-info'
   const title = document.createElement('strong')
@@ -385,7 +399,7 @@ function createInfoContent(device: DeviceVO, online: boolean) {
   const location = document.createElement('span')
   location.textContent = device.location || '位置未标注'
   const state = document.createElement('span')
-  state.textContent = `${online ? '在线' : '离线'} · ${device.latestLux === null ? '暂无照度' : `${device.latestLux} Lux`}`
+  state.textContent = `${lampStateLabel(stateValue)} · ${device.latestLux === null ? '暂无照度' : `${device.latestLux} Lux`}`
   root.append(title, location, state)
   return root
 }
@@ -397,21 +411,21 @@ function updateMarkers() {
   mapInstance.remove(markers)
   const shown = devices.value.filter((device) => (
     mapFilter.value === 'all'
-    || (mapFilter.value === 'online' ? device.status === 'ONLINE' : device.status === 'OFFLINE')
+    || getLampState(device) === mapFilter.value
   ))
   markers = shown.map((device) => {
     const index = devices.value.findIndex((item) => item.code === device.code)
-    const online = device.status === 'ONLINE'
+    const lampState = getLampState(device)
     const marker = new api.Marker({
       position: devicePosition(device, index),
       offset: new api.Pixel(-13, -13),
-      content: createMarkerContent(device, online),
+      content: createMarkerContent(device, lampState),
     })
     marker.on('click', () => {
       currentCode.value = device.code
       loadTrend()
       if (map && infoWindow) {
-        infoWindow.setContent(createInfoContent(device, online))
+        infoWindow.setContent(createInfoContent(device, lampState))
         infoWindow.open(map, marker.getPosition())
       }
     })
@@ -743,6 +757,16 @@ onUnmounted(() => {
   color: var(--ok);
 }
 
+.legend-shape.on {
+  color: var(--ok);
+  background: currentColor;
+}
+
+.legend-shape.off {
+  color: #7d8784;
+  background: currentColor;
+}
+
 .legend-shape.offline {
   color: var(--danger);
   border-radius: 2px;
@@ -897,6 +921,14 @@ onUnmounted(() => {
   color: var(--ok);
 }
 
+.device-status.on {
+  color: var(--ok);
+}
+
+.device-status.off {
+  color: #717b78;
+}
+
 .device-status.offline {
   color: var(--danger);
 }
@@ -917,9 +949,15 @@ onUnmounted(() => {
   transform: rotate(-45deg);
 }
 
-:deep(.lamp-marker.is-online) {
+:deep(.lamp-marker.is-on) {
   background: var(--ok);
   box-shadow: 0 0 0 4px var(--ok-glow), 0 2px 9px rgba(0, 0, 0, 0.5);
+}
+
+:deep(.lamp-marker.is-off) {
+  border-color: rgba(245, 247, 246, 0.96);
+  background: #7d8784;
+  box-shadow: 0 0 0 3px rgba(125, 135, 132, 0.2), 0 2px 9px rgba(0, 0, 0, 0.42);
 }
 
 :deep(.lamp-marker.is-offline) {

@@ -5,11 +5,21 @@ import request from './request'
  * 接口已由 Java 后端实现；调用失败时由页面降级处理。
  */
 
-/** 光照联动配置：联动总开关 + 开关阈值（Lux） */
+export interface BrightnessPeriod {
+  name: string
+  startTime: string
+  brightnessPercent: number
+}
+
+/** 光照联动配置：Lux 只负责开关，时间段只负责开灯后的亮度百分比。 */
 export interface LinkageConfig {
   enabled: boolean
   threshold: number
   hysteresis: number
+  brightnessPeriods: BrightnessPeriod[]
+  currentBrightnessPercent?: number
+  currentBrightnessPeriod?: string
+  currentTime?: string
 }
 
 /** 手动开关命令状态（后端 CommandStatus 枚举） */

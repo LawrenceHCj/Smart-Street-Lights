@@ -131,6 +131,7 @@ import type { UserVO, UserRole } from '../api/user'
 import { probe } from '../api/helper'
 import { getCurrentUsername } from '../utils/auth'
 import NotReadyBanner from '../components/NotReadyBanner.vue'
+import { compareNaturalText } from '../utils/sort'
 
 const users = ref<UserVO[]>([])
 const ready = ref(true)
@@ -144,7 +145,9 @@ const pageSize = ref(10)
 const pageSizes = [10, 20, 50]
 const pagedUsers = computed(() => {
   const start = (page.value - 1) * pageSize.value
-  return users.value.slice(start, start + pageSize.value)
+  return [...users.value]
+    .sort((left, right) => compareNaturalText(left.username, right.username))
+    .slice(start, start + pageSize.value)
 })
 function onPage(p: number) {
   page.value = p

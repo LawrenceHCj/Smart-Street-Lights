@@ -7,7 +7,6 @@
       </div>
       <div class="intro-actions">
         <template v-if="canOperate">
-          <el-button size="small" :loading="seeding" @click="onSeedDemo">生成演示数据</el-button>
           <el-button size="small" type="primary" :loading="predictingAll" @click="onPredictAll">全部预测</el-button>
         </template>
         <el-button size="small" :loading="loading" @click="load">刷新</el-button>
@@ -89,7 +88,6 @@
           <template #empty>
             <div class="table-empty">
               暂无预测报告
-              <small v-if="canOperate">可点击右上角"生成演示数据"造数，再点"全部预测"</small>
             </div>
           </template>
         </el-table>
@@ -158,10 +156,11 @@ import { GridComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import type { ECharts } from 'echarts/core'
 import {
-  getRiskHistory, listRiskLatest, parseFeatures, parseReasons, predictAllDevices, predictDevice, seedDemoData,
+  getRiskHistory, listRiskLatest, parseFeatures, parseReasons, predictAllDevices, predictDevice,
   type RiskLevel, type RiskPrediction,
 } from '../api/risk'
 import { getCurrentRole } from '../utils/auth'
+import { compareNaturalText, compareTimestampDesc } from '../utils/sort'
 
 use([BarChart, LineChart, GridComponent, TooltipComponent, CanvasRenderer])
 
@@ -170,7 +169,6 @@ const loading = ref(false)
 const filter = ref<'all' | RiskLevel>('all')
 const canOperate = ['admin', 'operator'].includes(getCurrentRole() ?? '')
 
-const seeding = ref(false)
 const predictingAll = ref(false)
 const predictingCode = ref('')
 
@@ -188,9 +186,16 @@ const countByLevel = computed(() => {
   for (const p of predictions.value) c[p.riskLevel] = (c[p.riskLevel] ?? 0) + 1
   return c
 })
-const filtered = computed(() =>
-  filter.value === 'all' ? predictions.value : predictions.value.filter((p) => p.riskLevel === filter.value),
-)
+const filtered = computed(() => {
+  const matches = filter.value === 'all'
+    ? predictions.value
+    : predictions.value.filter((p) => p.riskLevel === filter.value)
+  return [...matches].sort((left, right) =>
+    right.riskScore - left.riskScore
+    || compareNaturalText(left.deviceCode, right.deviceCode)
+    || compareTimestampDesc(left.predictedAt, right.predictedAt),
+  )
+})
 
 function levelLabel(level: RiskLevel): string {
   return level === 'HIGH' ? '高风险' : level === 'MEDIUM' ? '中风险' : '低风险'
@@ -211,18 +216,6 @@ async function load() {
     /* 全局拦截器已提示 */
   } finally {
     loading.value = false
-  }
-}
-
-async function onSeedDemo() {
-  seeding.value = true
-  try {
-    const msg = await seedDemoData()
-    ElMessage.success(msg)
-  } catch {
-    /* 全局拦截器已提示 */
-  } finally {
-    seeding.value = false
   }
 }
 

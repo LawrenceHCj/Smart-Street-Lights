@@ -19,7 +19,7 @@ public class DashboardService {
 
         long total = devices.size();
         long online = devices.stream().filter(d -> "ONLINE".equals(d.getStatus())).count();
-        long offline = devices.stream().filter(d -> "OFFLINE".equals(d.getStatus())).count();
+        long offline = total - online;
 
         Double avgLux = devices.stream()
                 .filter(d -> d.getLatestLux() != null)

@@ -28,13 +28,15 @@ class MqttIngestionServiceTest {
     private DeviceCommandService commandService;
     @Mock
     private AlarmService alarmService;
+    @Mock
+    private ConfigService configService;
 
     private MqttIngestionService service;
 
     @BeforeEach
     void setUp() {
         service = new MqttIngestionService(deviceRepository, lightPointRepository, new ObjectMapper(),
-                commandService, alarmService);
+                commandService, alarmService, configService);
     }
 
     @Test
@@ -68,6 +70,49 @@ class MqttIngestionServiceTest {
         assertThat(point.getEnergy()).isEqualTo(14.7);
         assertThat(point.getRawPayload()).contains("vendorField");
         assertThat(point.getServerReceivedAt()).isNotNull();
+    }
+
+    @Test
+    void fillsMissingDeviceLocationFromTelemetryMetadata() throws Exception {
+        long now = System.currentTimeMillis();
+        Device device = new Device();
+        device.setCode("SIM-HUXI-001");
+        device.setName("SIM-HUXI-001");
+        device.setLocation("未知位置");
+        when(deviceRepository.findByCode("SIM-HUXI-001")).thenReturn(Optional.of(device));
+
+        service.ingest("device/SIM-HUXI-001/data", """
+                {"deviceId":"SIM-HUXI-001","name":"SIM-HUXI-001 虎溪图书馆东门",
+                 "location":"虎溪图书馆东门","longitude":"106.29812","latitude":"29.59498",
+                 "lux":80,"ts":%d}
+                """.formatted(now));
+
+        assertThat(device.getName()).isEqualTo("SIM-HUXI-001 虎溪图书馆东门");
+        assertThat(device.getLocation()).isEqualTo("虎溪图书馆东门");
+        assertThat(device.getLongitude()).isEqualTo(106.29812);
+        assertThat(device.getLatitude()).isEqualTo(29.59498);
+    }
+
+    @Test
+    void telemetryMetadataDoesNotOverwriteManagedLocation() throws Exception {
+        long now = System.currentTimeMillis();
+        Device device = new Device();
+        device.setCode("SL-001");
+        device.setName("人工命名设备");
+        device.setLocation("管理员维护位置");
+        device.setLongitude(106.30);
+        device.setLatitude(29.59);
+        when(deviceRepository.findByCode("SL-001")).thenReturn(Optional.of(device));
+
+        service.ingest("device/SL-001/data", """
+                {"name":"错误覆盖名称","location":"错误覆盖位置",
+                 "longitude":120.0,"latitude":30.0,"lux":80,"ts":%d}
+                """.formatted(now));
+
+        assertThat(device.getName()).isEqualTo("人工命名设备");
+        assertThat(device.getLocation()).isEqualTo("管理员维护位置");
+        assertThat(device.getLongitude()).isEqualTo(106.30);
+        assertThat(device.getLatitude()).isEqualTo(29.59);
     }
 
     @Test
@@ -166,5 +211,40 @@ class MqttIngestionServiceTest {
 
         verify(commandService).acknowledge(eq("SL-001"), any());
         verifyNoInteractions(deviceRepository, lightPointRepository);
+    }
+
+    @Test
+    void keepsLatestControlledStateForManagedSimulatorTelemetry() throws Exception {
+        long now = System.currentTimeMillis();
+        Device device = new Device();
+        device.setCode("SIM-HUXI-001");
+        device.setLampStatus("OFF");
+        when(deviceRepository.findByCode("SIM-HUXI-001")).thenReturn(Optional.of(device));
+        when(commandService.resolveReportedLampStatus("SIM-HUXI-001", "ON")).thenReturn("OFF");
+        when(configService.resolveSimulatorLampStatus(80, "OFF", "OFF")).thenReturn("OFF");
+
+        service.ingest("device/SIM-HUXI-001/data",
+                "{\"deviceId\":\"SIM-HUXI-001\",\"lux\":80,\"lampStatus\":\"ON\",\"ts\":" + now + "}");
+
+        assertThat(device.getLampStatus()).isEqualTo("OFF");
+        ArgumentCaptor<LightPoint> pointCaptor = ArgumentCaptor.forClass(LightPoint.class);
+        verify(lightPointRepository).save(pointCaptor.capture());
+        assertThat(pointCaptor.getValue().getLampStatus()).isEqualTo("OFF");
+    }
+
+    @Test
+    void appliesAutomaticLinkageToManagedSimulatorTelemetry() throws Exception {
+        long now = System.currentTimeMillis();
+        Device device = new Device();
+        device.setCode("SIM-HUXI-008");
+        device.setLampStatus("ON");
+        when(deviceRepository.findByCode("SIM-HUXI-008")).thenReturn(Optional.of(device));
+        when(commandService.resolveReportedLampStatus("SIM-HUXI-008", "ON")).thenReturn("ON");
+        when(configService.resolveSimulatorLampStatus(160, "ON", "ON")).thenReturn("OFF");
+
+        service.ingest("device/SIM-HUXI-008/data",
+                "{\"deviceId\":\"SIM-HUXI-008\",\"lux\":160,\"lampStatus\":\"ON\",\"ts\":" + now + "}");
+
+        assertThat(device.getLampStatus()).isEqualTo("OFF");
     }
 }

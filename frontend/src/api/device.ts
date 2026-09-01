@@ -8,8 +8,20 @@ export interface DeviceVO {
   longitude: number | null
   latitude: number | null
   status: 'ONLINE' | 'OFFLINE'
+  lampStatus: 'ON' | 'OFF' | null
+  controlMode: 'AUTO' | 'MANUAL'
   latestLux: number | null
   lastSeen: number | null
+}
+
+export type DeviceControlMode = 'AUTO' | 'MANUAL'
+
+export function setDeviceControlMode(deviceId: string, mode: DeviceControlMode): Promise<DeviceVO> {
+  return request.patch(`/devices/${deviceId}/mode`, { mode }, { silent: true })
+}
+
+export function setBatchDeviceControlMode(deviceIds: string[], mode: DeviceControlMode): Promise<number> {
+  return request.patch('/devices/batch/mode', { deviceIds, mode }, { silent: true })
 }
 
 export interface LightPoint {

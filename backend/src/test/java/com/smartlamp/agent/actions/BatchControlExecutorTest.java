@@ -181,4 +181,41 @@ class BatchControlExecutorTest {
                 .isInstanceOf(ActionRejectedException.class);
         verify(deviceCommandService, never()).dispatch(any(), any(), any());
     }
+
+    // ============ 批量控制区域限定 ============
+
+    @Test
+    void 区域限定批量只下发匹配区域的设备() {
+        Device a = onlineBoundDevice("lamp001");
+        a.setLocation("北门入口");
+        Device b = onlineBoundDevice("lamp003");
+        b.setLocation("东门");
+        when(deviceService.getAllDevices()).thenReturn(List.of(a, b));
+        when(deviceCommandService.dispatch("lamp003", "OFF", "AGENT"))
+                .thenReturn(command("CMD-1", "lamp003", CommandStatus.DISPATCHED));
+        AgentAction action = actionManager.create(ActionType.TURN_OFF_ALL, "device", "东门",
+                Map.of("locationKeyword", "东门"), "test-user");
+        actionManager.confirm(action.getActionId());
+
+        ExecutorResult result = executorWith(0).execute(action);
+
+        assertThat(result.status()).isEqualTo(com.smartlamp.dto.CommandStatus.COMMAND_ACCEPTED);
+        assertThat(result.message()).contains("共下发 1 台关闭命令");
+        // 非匹配区域的设备绝不下发
+        verify(deviceCommandService, never()).dispatch(org.mockito.ArgumentMatchers.eq("lamp001"), any(), any());
+    }
+
+    @Test
+    void 区域限定批量确认时已无匹配设备FAILED() {
+        when(deviceService.getAllDevices()).thenReturn(List.of(onlineBoundDevice("lamp001")));
+        AgentAction action = actionManager.create(ActionType.TURN_OFF_ALL, "device", "东门",
+                Map.of("locationKeyword", "东门"), "test-user");
+        actionManager.confirm(action.getActionId());
+
+        ExecutorResult result = executorWith(0).execute(action);
+
+        assertThat(result.status()).isEqualTo(com.smartlamp.dto.CommandStatus.FAILED);
+        assertThat(result.message()).contains("东门");
+        verify(deviceCommandService, never()).dispatch(any(), any(), any());
+    }
 }

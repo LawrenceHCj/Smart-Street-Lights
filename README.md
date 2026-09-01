@@ -204,6 +204,8 @@ docs/technical-architecture.svg
 - 光照数据展示与历史曲线
 - 手动开灯/关灯
 - 自动联动阈值配置
+- 常驻分时亮度百分比控制（仅调整已开启路灯亮度，与 Lux 开关策略相互独立）
+- 独立节能成效页（全功率基线、策略能耗、节电量、费用与减碳估算）
 - 在线/离线状态模拟
 - 告警列表与告警确认
 - SSE 实时推送
@@ -225,6 +227,7 @@ GET  /api/alarms                   告警列表
 POST /api/alarms/:id/ack           确认告警
 GET  /api/config/linkage           获取联动策略
 PUT  /api/config/linkage           修改联动策略
+GET  /api/energy-savings           获取 1–30 天节能估算
 POST /api/agent/ask                AI 问答
 ```
 

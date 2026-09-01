@@ -68,7 +68,3 @@ export function predictDevice(deviceCode: string, config?: AxiosRequestConfig): 
 export function predictAllDevices(config?: AxiosRequestConfig): Promise<{ predictedDevices: number }> {
   return request.post('/risk/predict-all', undefined, config)
 }
-
-export function seedDemoData(config?: AxiosRequestConfig): Promise<string> {
-  return request.post('/risk/seed-demo', undefined, config)
-}

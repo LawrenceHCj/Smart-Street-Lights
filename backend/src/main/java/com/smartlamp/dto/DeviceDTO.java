@@ -17,6 +17,7 @@ public class DeviceDTO {
     // 行为变化点：/api/devices 与智能体设备列表/状态查询多返回 lampStatus、bound 两个字段（缺省为 null）。
     private String lampStatus;
     private Boolean bound;
+    private String controlMode;
 
     // 构造方法，从 Device 实体转换
     public DeviceDTO(Long id, String code, String location, Double longitude, Double latitude,

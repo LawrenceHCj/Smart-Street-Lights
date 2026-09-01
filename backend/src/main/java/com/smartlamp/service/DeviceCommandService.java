@@ -67,7 +67,28 @@ public class DeviceCommandService {
             commandRepository.save(command);
             throw error;
         }
+        // 内置模拟设备没有 cmd_ack 能力：发布命令后由模拟执行器完成状态闭环。
+        // 真实设备不走此分支，仍须通过 device/{id}/cmd_ack 返回硬件执行结果。
+        if (isManagedSimulator(deviceId)) {
+            command.setStatus(CommandStatus.SUCCESS);
+            command.setUpdatedAt(LocalDateTime.now());
+            commandRepository.save(command);
+            device.setLampStatus(normalizedAction);
+            deviceRepository.save(device);
+        }
         return command;
+    }
+
+    /**
+     * 模拟器会在遥测中反复发送导入文件里的固定 lampStatus；已有成功控制命令时，
+     * 以最近一次已执行命令为准，保证模拟开关状态跨刷新、跨后端重启保持一致。
+     */
+    public String resolveReportedLampStatus(String deviceId, String reportedStatus) {
+        if (!isManagedSimulator(deviceId)) return reportedStatus;
+        return commandRepository
+                .findFirstByDeviceCodeAndStatusOrderByUpdatedAtDesc(deviceId, CommandStatus.SUCCESS)
+                .map(DeviceCommand::getAction)
+                .orElse(reportedStatus);
     }
 
     public DeviceCommand find(String commandId) {
@@ -137,6 +158,10 @@ public class DeviceCommandService {
 
     private String safeMode(String mode) {
         return mode == null || mode.isBlank() ? "MANUAL" : mode.trim().toUpperCase(Locale.ROOT);
+    }
+
+    private boolean isManagedSimulator(String deviceId) {
+        return deviceId != null && deviceId.startsWith("SIM-HUXI-");
     }
 
     private String requiredText(JsonNode payload, String field) {

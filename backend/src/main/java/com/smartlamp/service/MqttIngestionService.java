@@ -25,17 +25,20 @@ public class MqttIngestionService {
     private final ObjectMapper objectMapper;
     private final DeviceCommandService commandService;
     private final AlarmService alarmService;
+    private final ConfigService configService;
 
     public MqttIngestionService(DeviceRepository deviceRepository,
                                 LightPointRepository lightPointRepository,
                                 ObjectMapper objectMapper,
                                 DeviceCommandService commandService,
-                                AlarmService alarmService) {
+                                AlarmService alarmService,
+                                ConfigService configService) {
         this.deviceRepository = deviceRepository;
         this.lightPointRepository = lightPointRepository;
         this.objectMapper = objectMapper;
         this.commandService = commandService;
         this.alarmService = alarmService;
+        this.configService = configService;
     }
 
     @Transactional
@@ -109,6 +112,14 @@ public class MqttIngestionService {
         Double power = optionalNumber(json, "power");
         Double energy = optionalNumber(json, "energy");
         String lampStatus = optionalLampStatus(json.get("lampStatus"));
+        if (device.getCode().startsWith("SIM-HUXI-")) {
+            lampStatus = commandService.resolveReportedLampStatus(device.getCode(), lampStatus);
+            if (!"MANUAL".equalsIgnoreCase(device.getControlMode())) {
+                lampStatus = configService.resolveSimulatorLampStatus(lux, device.getLampStatus(), lampStatus);
+            }
+        }
+
+        applyOptionalMetadata(device, json);
 
         // 2) 防止延迟/重复旧消息覆盖最新快照：仅当采集时间不早于当前 lastTelemetryAt 时才更新设备快照。
         Long prevTelemetryTs = device.getLastTelemetryAt();
@@ -154,6 +165,58 @@ public class MqttIngestionService {
         device.setStatus("ONLINE");
         device.setCreatedAt(LocalDateTime.now());
         return device;
+    }
+
+    /**
+     * MQTT 自动发现的设备可在首次遥测中携带地图元数据。只补齐尚未维护的字段，
+     * 避免后续遥测覆盖管理员在设备管理页手工修正的位置。
+     */
+    private void applyOptionalMetadata(Device device, JsonNode json) {
+        String name = optionalText(json.get("name"), "name", 128);
+        String location = optionalText(json.get("location"), "location", 255);
+        Double longitude = optionalCoordinate(json.get("longitude"), "longitude", -180, 180);
+        Double latitude = optionalCoordinate(json.get("latitude"), "latitude", -90, 90);
+
+        if (name != null && (device.getName() == null || device.getName().isBlank()
+                || device.getName().equals(device.getCode()))) {
+            device.setName(name);
+        }
+        if (location != null && (device.getLocation() == null || device.getLocation().isBlank()
+                || "未知位置".equals(device.getLocation()))) {
+            device.setLocation(location);
+        }
+        if (longitude != null && device.getLongitude() == null) device.setLongitude(longitude);
+        if (latitude != null && device.getLatitude() == null) device.setLatitude(latitude);
+    }
+
+    private String optionalText(JsonNode node, String field, int maxLength) {
+        if (node == null || node.isNull()) return null;
+        if (!node.isTextual() || node.asText().isBlank()) {
+            throw new IllegalArgumentException(field + " 必须是非空字符串");
+        }
+        String value = node.asText().trim();
+        if (value.length() > maxLength) throw new IllegalArgumentException(field + " 长度不能超过 " + maxLength);
+        return value;
+    }
+
+    private Double optionalCoordinate(JsonNode node, String field, double min, double max) {
+        if (node == null || node.isNull()) return null;
+        double value;
+        if (node.isNumber()) {
+            value = node.asDouble();
+        } else if (node.isTextual()) {
+            try {
+                value = Double.parseDouble(node.asText().trim());
+            } catch (NumberFormatException error) {
+                throw new IllegalArgumentException(field + " 必须是数值");
+            }
+        } else {
+            throw new IllegalArgumentException(field + " 必须是数值");
+        }
+        if (!Double.isFinite(value) || value < min || value > max) {
+            throw new IllegalArgumentException(field + " 超出有效范围");
+        }
+        return value;
     }
 
     private long readTimestamp(JsonNode node) {

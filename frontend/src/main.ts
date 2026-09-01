@@ -20,6 +20,7 @@ import {
   ElSwitch,
   ElTable,
   ElTableColumn,
+  ElTimeSelect,
   ElTooltip,
 } from 'element-plus'
 import '@fontsource-variable/inter'
@@ -53,6 +54,7 @@ const elementComponents = [
   ElSwitch,
   ElTable,
   ElTableColumn,
+  ElTimeSelect,
   ElTooltip,
 ]
 

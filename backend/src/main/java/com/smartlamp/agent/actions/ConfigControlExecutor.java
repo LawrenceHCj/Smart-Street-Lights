@@ -30,6 +30,8 @@ public class ConfigControlExecutor implements ActionExecutor {
             next.setEnabled(current.isEnabled());
             next.setThreshold(current.getThreshold());
             next.setHysteresis(current.getHysteresis());
+            next.setBrightnessScheduleEnabled(current.getBrightnessScheduleEnabled());
+            next.setBrightnessPeriods(current.getBrightnessPeriods());
 
             if (action.getActionType() == ActionType.UPDATE_LUX_THRESHOLD) {
                 next.setThreshold(((Number) action.getArguments().get("value")).intValue());

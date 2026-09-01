@@ -290,6 +290,7 @@ import { addDevice, removeDevice } from '../api/deviceManage'
 import { probe } from '../api/helper'
 import NotReadyBanner from '../components/NotReadyBanner.vue'
 import { loadAMap } from '../utils/amap'
+import { compareDeviceCode, compareTimestampDesc } from '../utils/sort'
 
 interface PickerMapInstance {
   add(item: PickerMarkerInstance): void
@@ -316,10 +317,12 @@ const devices = ref<DeviceVO[]>([])
 const deviceQuery = ref('')
 const filteredDevices = computed(() => {
   const q = deviceQuery.value.trim().toLowerCase()
-  if (!q) return devices.value
-  return devices.value.filter(
-    (d) => (d.code || '').toLowerCase().includes(q) || (d.location || '').toLowerCase().includes(q),
-  )
+  const matches = q
+    ? devices.value.filter(
+        (d) => (d.code || '').toLowerCase().includes(q) || (d.location || '').toLowerCase().includes(q),
+      )
+    : devices.value
+  return [...matches].sort(compareDeviceCode)
 })
 const ready = ref(true)
 const addVisible = ref(false)
@@ -382,7 +385,7 @@ const filteredHealthHistory = computed(() => {
     const key = Math.floor(t / FOUR_HOUR)
     if (!buckets.has(key)) buckets.set(key, r)
   }
-  return Array.from(buckets.values())
+  return Array.from(buckets.values()).sort((left, right) => compareTimestampDesc(left.createdAt, right.createdAt))
 })
 
 const form = reactive<{ code: string; location: string; longitude?: number; latitude?: number }>({ code: '', location: '' })

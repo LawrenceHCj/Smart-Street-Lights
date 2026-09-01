@@ -55,6 +55,7 @@ const primaryRoutes = [
   ['dashboard', '/dashboard', true],
   ['monitor', '/monitor', true],
   ['control', '/control', true],
+  ['energy', '/energy', true],
   ['alarms', '/alarms', true],
   ['devices', '/devices', true],
   ['chat', '/chat', true],

@@ -161,6 +161,7 @@ import { listDevices, getHistory, getCurrentLight } from '../api/device'
 import type { DeviceVO, LightPoint } from '../api/device'
 import { initLuxChart, luxLineOption } from '../utils/chart'
 import type { ChartInstance } from '../utils/chart'
+import { compareDeviceCode } from '../utils/sort'
 
 const devices = ref<DeviceVO[]>([])
 const currentCode = ref('SL-001')
@@ -192,12 +193,14 @@ const offlineCount = computed(() => devices.value.filter((d) => d.status === 'OF
 
 const filteredDevices = computed(() => {
   const kw = keyword.value.trim().toLowerCase()
-  if (!kw) return devices.value
-  return devices.value.filter(
-    (d) =>
-      d.code.toLowerCase().includes(kw) ||
-      (d.location || '').toLowerCase().includes(kw),
-  )
+  const matches = kw
+    ? devices.value.filter(
+        (d) =>
+          d.code.toLowerCase().includes(kw) ||
+          (d.location || '').toLowerCase().includes(kw),
+      )
+    : devices.value
+  return [...matches].sort(compareDeviceCode)
 })
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -211,7 +214,7 @@ async function loadDevices(manual = false) {
   if (loading.value) return
   loading.value = true
   try {
-    devices.value = await listDevices({ silent: true })
+    devices.value = [...await listDevices({ silent: true })].sort(compareDeviceCode)
     loadError.value = ''
     // 轮询时不打断用户当前选中；仅当选中设备已不存在时回退到第一台
     if (devices.value.length && !devices.value.some((d) => d.code === currentCode.value)) {

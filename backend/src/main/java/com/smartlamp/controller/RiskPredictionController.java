@@ -2,7 +2,6 @@ package com.smartlamp.controller;
 
 import com.smartlamp.dto.ApiResponse;
 import com.smartlamp.entity.DeviceRiskPrediction;
-import com.smartlamp.service.DemoDataSeedService;
 import com.smartlamp.service.RiskPredictionService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -13,7 +12,7 @@ import java.util.Map;
 
 /**
  * 预测性维护接口（设备未来 7 天故障风险）。
- * 查询：登录即可（municipal 只读）；触发预测/生成演示数据：admin 或 operator。
+ * 查询：登录即可（municipal 只读）；触发预测：admin 或 operator。
  */
 @RestController
 @RequestMapping("/api/risk")
@@ -21,9 +20,6 @@ public class RiskPredictionController {
 
     @Autowired
     private RiskPredictionService riskPredictionService;
-
-    @Autowired
-    private DemoDataSeedService demoDataSeedService;
 
     // GET /api/risk/latest —— 全部设备的最新一次预测
     @GetMapping("/latest")
@@ -56,10 +52,4 @@ public class RiskPredictionController {
         return ApiResponse.success(Map.of("predictedDevices", saved));
     }
 
-    // POST /api/risk/seed-demo —— 生成演示数据（4 台虚拟设备 + 7 天合成遥测）
-    @PostMapping("/seed-demo")
-    @PreAuthorize("hasAnyRole('admin','operator')")
-    public ApiResponse<String> seedDemo() {
-        return ApiResponse.success(demoDataSeedService.seed());
-    }
 }

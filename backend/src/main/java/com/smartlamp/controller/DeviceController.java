@@ -9,6 +9,8 @@ import com.smartlamp.dto.DeviceHealthDTO;
 import com.smartlamp.dto.LightDataDTO;
 import com.smartlamp.dto.SwitchLightRequest;
 import com.smartlamp.dto.UpdateDeviceRequest;
+import com.smartlamp.dto.DeviceModeRequest;
+import com.smartlamp.dto.BatchDeviceModeRequest;
 import com.smartlamp.entity.Device;
 import com.smartlamp.entity.DeviceCommand;
 import com.smartlamp.service.DeviceCommandService;
@@ -72,8 +74,32 @@ public class DeviceController {
     @PreAuthorize("hasAnyRole('admin','operator')")
     public ApiResponse<ControlResultDTO> switchLight(@PathVariable String deviceId,
                                                       @RequestBody SwitchLightRequest request) {
+        deviceService.setControlMode(deviceId, "MANUAL");
         DeviceCommand command = commandService.dispatch(deviceId, request.isOn() ? "ON" : "OFF", "MANUAL");
         return ApiResponse.success(commandService.toResult(command, "MANUAL"));
+    }
+
+    @PatchMapping("/{deviceId}/mode")
+    @PreAuthorize("hasAnyRole('admin','operator')")
+    public ApiResponse<DeviceDTO> setControlMode(@PathVariable String deviceId,
+                                                  @RequestBody DeviceModeRequest request) {
+        try {
+            Device device = deviceService.setControlMode(deviceId, request.getMode());
+            return device == null ? ApiResponse.error(404, "设备不存在")
+                    : ApiResponse.success(deviceService.toDTO(device));
+        } catch (IllegalArgumentException error) {
+            return ApiResponse.error(400, error.getMessage());
+        }
+    }
+
+    @PatchMapping("/batch/mode")
+    @PreAuthorize("hasAnyRole('admin','operator')")
+    public ApiResponse<Integer> setBatchControlMode(@RequestBody BatchDeviceModeRequest request) {
+        try {
+            return ApiResponse.success(deviceService.setControlMode(request.getDeviceIds(), request.getMode()));
+        } catch (IllegalArgumentException error) {
+            return ApiResponse.error(400, error.getMessage());
+        }
     }
 
     @PostMapping

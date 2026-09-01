@@ -184,7 +184,7 @@ async function audit(route, viewport) {
   await page.close()
 }
 
-const routes = ['/login', '/dashboard', '/monitor', '/control', '/alarms', '/devices', '/chat', '/users']
+const routes = ['/login', '/dashboard', '/monitor', '/control', '/energy', '/alarms', '/devices', '/chat', '/users']
 const viewports = [
   { width: 1440, height: 900 },
   { width: 1024, height: 768 },

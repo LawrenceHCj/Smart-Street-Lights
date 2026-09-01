@@ -212,6 +212,14 @@ public class ActionManager {
                 throw new ActionRejectedException("自动模式参数 enabled 必须是布尔值");
             }
         }
+        // 批量开/关的区域限定词：非空字符串且不超过 32 字
+        if ((type == ActionType.TURN_OFF_ALL || type == ActionType.TURN_ON_ALL)
+                && args.containsKey("locationKeyword")) {
+            Object keyword = args.get("locationKeyword");
+            if (!(keyword instanceof String) || ((String) keyword).isBlank() || ((String) keyword).length() > 32) {
+                throw new ActionRejectedException("区域限定词 locationKeyword 必须是非空字符串且不超过 32 字");
+            }
+        }
     }
 
     private AgentAction require(String actionId) {

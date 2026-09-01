@@ -16,6 +16,8 @@ public interface DeviceRiskPredictionRepository extends JpaRepository<DeviceRisk
 
     List<DeviceRiskPrediction> findTop30ByDeviceCodeOrderByPredictedAtDesc(String deviceCode);
 
+    void deleteByDeviceCode(String deviceCode);
+
     /** 全部设备的最新一次预测（用于风险预测列表页） */
     @Query("SELECT p FROM DeviceRiskPrediction p WHERE p.id IN "
             + "(SELECT MAX(latest.id) FROM DeviceRiskPrediction latest GROUP BY latest.deviceCode)")

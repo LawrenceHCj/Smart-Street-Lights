@@ -23,6 +23,8 @@ public class Device {
     private String binding;
     private Boolean bound = true;
     private String lampStatus = "OFF";
+    /** AUTO 由光照联动控制；MANUAL 仅响应人工开关命令。 */
+    private String controlMode = "AUTO";
     private String status;
     private Double latestLux;
     private Double latestTemperature;

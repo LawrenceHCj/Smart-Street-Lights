@@ -119,6 +119,9 @@ class PromptProviderTest {
         assertThat(prompt).contains("不得只复述知识库");
         assertThat(prompt).contains("必须追问");
         assertThat(prompt).contains("不得自行猜测");
+        // 区域限定批量：如"关闭东门的灯"→ locationKeyword
+        assertThat(prompt).contains("locationKeyword");
+        assertThat(prompt).contains("只操作该区域在线路灯");
     }
 
     @Test
