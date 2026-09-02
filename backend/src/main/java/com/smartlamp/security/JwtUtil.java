@@ -9,7 +9,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
+import javax.crypto.Mac;
 import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
 import java.util.Date;
 
 @Component
@@ -54,6 +56,23 @@ public class JwtUtil {
 
     private SecretKey getSigningKey() {
         return Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+    }
+
+    /**
+     * 从 JWT 根密钥派生用途隔离的 256 位子密钥。调用方只拿到派生结果，
+     * 不接触根密钥；不同 context 不能互换，避免审计签名与 JWT 签名共用同一把工作密钥。
+     */
+    public byte[] deriveSubkey(String context) {
+        if (context == null || context.isBlank()) {
+            throw new IllegalArgumentException("密钥派生 context 不能为空");
+        }
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(getSigningKey());
+            return mac.doFinal(("smartlamp/subkey/" + context).getBytes(StandardCharsets.UTF_8));
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("安全子密钥派生失败", e);
+        }
     }
 
     public String generateToken(String username, String role) {

@@ -209,6 +209,7 @@ docs/technical-architecture.svg
 - 在线/离线状态模拟
 - 告警列表与告警确认
 - SSE 实时推送
+- 遥测与控制事件的后端认证链、自动完整性巡检与源数据篡改检测
 - AI 维护问答基础接口
 - Java 后端基础 API、JWT、JPA、MQTT 代码骨架
 
@@ -228,8 +229,13 @@ POST /api/alarms/:id/ack           确认告警
 GET  /api/config/linkage           获取联动策略
 PUT  /api/config/linkage           修改联动策略
 GET  /api/energy-savings           获取 1–30 天节能估算
+GET  /api/integrity/:deviceId/verify 后端数据完整性校验（admin/municipal）
 POST /api/agent/ask                AI 问答
 ```
+
+数据完整性功能不需要新增密钥配置：后端从现有 `JWT_SECRET` 派生用途隔离的审计子密钥，
+自动保护遥测、命令下发、设备回执和命令超时事件。生产环境应保持 `JWT_SECRET` 稳定，
+否则旧的完整性日志将无法通过认证。
 
 完整接口说明：
 

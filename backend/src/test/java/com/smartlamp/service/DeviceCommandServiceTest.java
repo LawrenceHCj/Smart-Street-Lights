@@ -11,11 +11,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.contains;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -24,12 +27,14 @@ class DeviceCommandServiceTest {
     @Mock private DeviceCommandRepository commandRepository;
     @Mock private DeviceRepository deviceRepository;
     @Mock private MqttPublisherService mqttPublisherService;
+    @Mock private DataIntegrityService dataIntegrityService;
 
     private DeviceCommandService service;
 
     @BeforeEach
     void setUp() {
-        service = new DeviceCommandService(commandRepository, deviceRepository, mqttPublisherService);
+        service = new DeviceCommandService(commandRepository, deviceRepository, mqttPublisherService,
+                dataIntegrityService);
     }
 
     @Test
@@ -41,9 +46,12 @@ class DeviceCommandServiceTest {
         DeviceCommand command = service.dispatch(device.getCode(), "OFF", "MANUAL");
 
         assertThat(command.getStatus()).isEqualTo(CommandStatus.SUCCESS);
+        assertThat(command.getMode()).isEqualTo("MANUAL");
         assertThat(device.getLampStatus()).isEqualTo("OFF");
         verify(mqttPublisherService).publish(contains("SIM-HUXI-001"), contains("\"action\":\"OFF\""));
         verify(deviceRepository).save(device);
+        verify(dataIntegrityService).appendCommand(command, DataIntegrityService.EVENT_COMMAND_DISPATCHED);
+        verify(dataIntegrityService).appendCommand(command, DataIntegrityService.EVENT_COMMAND_SUCCESS);
     }
 
     @Test
@@ -67,6 +75,30 @@ class DeviceCommandServiceTest {
 
         assertThat(service.resolveReportedLampStatus("SIM-HUXI-001", "ON")).isEqualTo("OFF");
         assertThat(service.resolveReportedLampStatus("SL-001", "ON")).isEqualTo("ON");
+    }
+
+    @Test
+    void timedOutCommandIsAlsoWrittenToIntegrityLog() {
+        DeviceCommand command = new DeviceCommand();
+        command.setId(9L);
+        command.setCommandId("cmd-9");
+        command.setDeviceCode("SL-001");
+        command.setAction("ON");
+        command.setMode("AGENT");
+        command.setStatus(CommandStatus.DISPATCHED);
+        command.setCreatedAt(LocalDateTime.now().minusMinutes(2));
+        when(commandRepository.findByStatusAndCreatedAtBefore(
+                org.mockito.ArgumentMatchers.eq(CommandStatus.DISPATCHED), any(LocalDateTime.class)))
+                .thenReturn(List.of(command));
+        when(commandRepository.findByStatusAndCreatedAtBefore(
+                org.mockito.ArgumentMatchers.eq(CommandStatus.ACKED), any(LocalDateTime.class)))
+                .thenReturn(List.of());
+
+        service.markTimedOutCommands();
+
+        assertThat(command.getStatus()).isEqualTo(CommandStatus.TIMEOUT);
+        verify(dataIntegrityService).appendCommand(command, DataIntegrityService.EVENT_COMMAND_TIMEOUT);
+        verify(mqttPublisherService, never()).publish(any(), any());
     }
 
     private Device onlineBoundDevice(String code) {

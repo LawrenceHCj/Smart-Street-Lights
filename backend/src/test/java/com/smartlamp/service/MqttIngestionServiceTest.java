@@ -30,13 +30,15 @@ class MqttIngestionServiceTest {
     private AlarmService alarmService;
     @Mock
     private ConfigService configService;
+    @Mock
+    private DataIntegrityService dataIntegrityService;
 
     private MqttIngestionService service;
 
     @BeforeEach
     void setUp() {
         service = new MqttIngestionService(deviceRepository, lightPointRepository, new ObjectMapper(),
-                commandService, alarmService, configService);
+                commandService, alarmService, configService, dataIntegrityService);
     }
 
     @Test
@@ -70,6 +72,7 @@ class MqttIngestionServiceTest {
         assertThat(point.getEnergy()).isEqualTo(14.7);
         assertThat(point.getRawPayload()).contains("vendorField");
         assertThat(point.getServerReceivedAt()).isNotNull();
+        verify(dataIntegrityService).appendTelemetry(point);
     }
 
     @Test

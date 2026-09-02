@@ -24,13 +24,16 @@ public class DeviceCommandService {
     private final DeviceCommandRepository commandRepository;
     private final DeviceRepository deviceRepository;
     private final MqttPublisherService mqttPublisherService;
+    private final DataIntegrityService dataIntegrityService;
 
     public DeviceCommandService(DeviceCommandRepository commandRepository,
                                 DeviceRepository deviceRepository,
-                                MqttPublisherService mqttPublisherService) {
+                                MqttPublisherService mqttPublisherService,
+                                DataIntegrityService dataIntegrityService) {
         this.commandRepository = commandRepository;
         this.deviceRepository = deviceRepository;
         this.mqttPublisherService = mqttPublisherService;
+        this.dataIntegrityService = dataIntegrityService;
     }
 
     @Transactional
@@ -50,10 +53,12 @@ public class DeviceCommandService {
         command.setCommandId(UUID.randomUUID().toString());
         command.setDeviceCode(deviceId);
         command.setAction(normalizedAction);
+        command.setMode(safeMode(mode));
         command.setStatus(CommandStatus.DISPATCHED);
         command.setCreatedAt(now);
         command.setUpdatedAt(now);
         commandRepository.save(command);
+        dataIntegrityService.appendCommand(command, DataIntegrityService.EVENT_COMMAND_DISPATCHED);
 
         boolean on = "ON".equals(normalizedAction);
         String payload = "{\"deviceId\":\"" + deviceId + "\",\"action\":\"" + normalizedAction
@@ -75,6 +80,7 @@ public class DeviceCommandService {
             commandRepository.save(command);
             device.setLampStatus(normalizedAction);
             deviceRepository.save(device);
+            dataIntegrityService.appendCommand(command, DataIntegrityService.EVENT_COMMAND_SUCCESS);
         }
         return command;
     }
@@ -117,6 +123,7 @@ public class DeviceCommandService {
         command.setStatus(status);
         command.setUpdatedAt(LocalDateTime.now());
         commandRepository.save(command);
+        dataIntegrityService.appendCommand(command, eventTypeForStatus(status));
 
         if (status == CommandStatus.SUCCESS) {
             deviceRepository.findByCode(topicDeviceId).ifPresent(device -> {
@@ -140,11 +147,13 @@ public class DeviceCommandService {
             command.setStatus(CommandStatus.TIMEOUT);
             command.setUpdatedAt(LocalDateTime.now());
             commandRepository.save(command);
+            dataIntegrityService.appendCommand(command, DataIntegrityService.EVENT_COMMAND_TIMEOUT);
         }
         for (DeviceCommand command : commandRepository.findByStatusAndCreatedAtBefore(CommandStatus.ACKED, cutoff)) {
             command.setStatus(CommandStatus.TIMEOUT);
             command.setUpdatedAt(LocalDateTime.now());
             commandRepository.save(command);
+            dataIntegrityService.appendCommand(command, DataIntegrityService.EVENT_COMMAND_TIMEOUT);
         }
     }
 
@@ -162,6 +171,16 @@ public class DeviceCommandService {
 
     private boolean isManagedSimulator(String deviceId) {
         return deviceId != null && deviceId.startsWith("SIM-HUXI-");
+    }
+
+    private String eventTypeForStatus(CommandStatus status) {
+        return switch (status) {
+            case ACKED -> DataIntegrityService.EVENT_COMMAND_ACKED;
+            case SUCCESS -> DataIntegrityService.EVENT_COMMAND_SUCCESS;
+            case FAILED -> DataIntegrityService.EVENT_COMMAND_FAILED;
+            case TIMEOUT -> DataIntegrityService.EVENT_COMMAND_TIMEOUT;
+            case DISPATCHED -> DataIntegrityService.EVENT_COMMAND_DISPATCHED;
+        };
     }
 
     private String requiredText(JsonNode payload, String field) {

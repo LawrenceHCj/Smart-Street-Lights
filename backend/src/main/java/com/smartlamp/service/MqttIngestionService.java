@@ -26,19 +26,22 @@ public class MqttIngestionService {
     private final DeviceCommandService commandService;
     private final AlarmService alarmService;
     private final ConfigService configService;
+    private final DataIntegrityService dataIntegrityService;
 
     public MqttIngestionService(DeviceRepository deviceRepository,
                                 LightPointRepository lightPointRepository,
                                 ObjectMapper objectMapper,
                                 DeviceCommandService commandService,
                                 AlarmService alarmService,
-                                ConfigService configService) {
+                                ConfigService configService,
+                                DataIntegrityService dataIntegrityService) {
         this.deviceRepository = deviceRepository;
         this.lightPointRepository = lightPointRepository;
         this.objectMapper = objectMapper;
         this.commandService = commandService;
         this.alarmService = alarmService;
         this.configService = configService;
+        this.dataIntegrityService = dataIntegrityService;
     }
 
     @Transactional
@@ -154,6 +157,8 @@ public class MqttIngestionService {
         point.setCreatedAt(LocalDateTime.now());
         point.setServerReceivedAt(LocalDateTime.now());
         lightPointRepository.save(point);
+        // 同事务追加认证摘要；不复制遥测明文，失败时业务数据与完整性日志一起回滚。
+        dataIntegrityService.appendTelemetry(point);
         return true;
     }
 
