@@ -10,6 +10,18 @@ declare module 'axios' {
   }
 }
 
+/** 业务错误（body.code != 0）：保留 code / data，便于调用方按 401/403/400/500 区分处理。 */
+export class ApiBusinessError extends Error {
+  constructor(
+    public code: number,
+    message: string,
+    public data?: unknown,
+  ) {
+    super(message)
+    this.name = 'ApiBusinessError'
+  }
+}
+
 const request = axios.create({
   baseURL: '/api',
   timeout: 60000,
@@ -39,7 +51,7 @@ request.interceptors.response.use(
     if (r.code !== 0) {
       if (r.code === 401) handleExpiredSession(resp.config.url)
       else if (!resp.config.silent) ElMessage.error(r.message || '请求失败')
-      return Promise.reject(new Error(r.message || '请求失败'))
+      return Promise.reject(new ApiBusinessError(r.code, r.message || '请求失败', r.data))
     }
     return r.data
   },

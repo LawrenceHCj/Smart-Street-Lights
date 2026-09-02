@@ -5,6 +5,7 @@ import com.smartlamp.dto.ApiResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -42,6 +43,13 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ApiResponse<Object> handleUnreadableBody(HttpMessageNotReadableException ex) {
         return ApiResponse.error(400, "请求体缺失或格式错误");
+    }
+
+    // 处理方法级安全（@PreAuthorize）拒绝：Spring Security 6+ 抛 AuthorizationDeniedException（AccessDeniedException 子类）。
+    // 必须在这里显式返回 403，否则会被下方兜底 Exception 处理器吞成 500。
+    @ExceptionHandler(AccessDeniedException.class)
+    public ApiResponse<Object> handleAccessDenied(AccessDeniedException ex) {
+        return ApiResponse.error(403, "权限不足");
     }
 
     // 处理其他所有异常

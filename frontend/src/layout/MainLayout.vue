@@ -49,7 +49,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowDown, Bell, ChatDotRound, DataAnalysis, DataBoard, MoreFilled, Operation, ReadingLamp, Sunny, SwitchButton, Tools, TrendCharts, User } from '@element-plus/icons-vue'
+import { ArrowDown, Bell, ChatDotRound, DataAnalysis, DataBoard, Lock, MoreFilled, Operation, ReadingLamp, Sunny, SwitchButton, Tools, TrendCharts, User } from '@element-plus/icons-vue'
 import { clearSession, getCurrentRole, isCurrentUserAdmin } from '../utils/auth'
 
 const route = useRoute()
@@ -74,8 +74,9 @@ const allNav = [
   { index: '05', path: '/alarms', label: '事件中枢', shortLabel: '事件', icon: Bell },
   { index: '06', path: '/risk', label: '故障预测', shortLabel: '预测', icon: TrendCharts },
   { index: '07', path: '/devices', label: '资产编目', shortLabel: '设备', icon: Tools },
-  { index: '08', path: '/chat', label: '智能研判', shortLabel: '助手', icon: ChatDotRound },
-  { index: '09', path: '/users', label: '席位权限', shortLabel: '用户', icon: User },
+  { index: '08', path: '/evidence', label: '证据链审计', shortLabel: '审计', icon: Lock },
+  { index: '09', path: '/chat', label: '智能研判', shortLabel: '助手', icon: ChatDotRound },
+  { index: '10', path: '/users', label: '席位权限', shortLabel: '用户', icon: User },
 ]
 const nav = allNav.filter((item) => item.path !== '/users' || currentUserIsAdmin)
 const mobileNav = nav.slice(0, 4)

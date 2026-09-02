@@ -41,3 +41,17 @@ data-retention:
 energy-savings:
   electricity-price-yuan-per-kwh: ${ELECTRICITY_PRICE_YUAN_PER_KWH:0.60}
   carbon-factor-kg-per-kwh: ${CARBON_FACTOR_KG_PER_KWH:0.57}
+
+# 遥测防篡改证据链（EvidenceChainService）
+evidence:
+  chain:
+    # 证据链总开关；关闭时不再追加新证据
+    enabled: true
+    # 每条证据 + 锚点的 HMAC 密钥（仅应用侧持有，不落库）；生产必须走环境变量，留空且启用将 fail-fast
+    hmac:
+      current-key-id: v1
+      secret: ${EVIDENCE_HMAC_SECRET:}
+    # 相邻锚点间最少证据条数（每 anchor-interval-ms 扫描一次，达到该间隔才落锚点）
+    anchor-interval: 100
+    # 锚点扫描周期（毫秒）
+    anchor-interval-ms: 300000

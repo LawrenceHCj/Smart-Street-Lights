@@ -24,13 +24,16 @@ public class DeviceCommandService {
     private final DeviceCommandRepository commandRepository;
     private final DeviceRepository deviceRepository;
     private final MqttPublisherService mqttPublisherService;
+    private final EvidenceChainService evidenceChainService;
 
     public DeviceCommandService(DeviceCommandRepository commandRepository,
                                 DeviceRepository deviceRepository,
-                                MqttPublisherService mqttPublisherService) {
+                                MqttPublisherService mqttPublisherService,
+                                EvidenceChainService evidenceChainService) {
         this.commandRepository = commandRepository;
         this.deviceRepository = deviceRepository;
         this.mqttPublisherService = mqttPublisherService;
+        this.evidenceChainService = evidenceChainService;
     }
 
     @Transactional
@@ -50,10 +53,15 @@ public class DeviceCommandService {
         command.setCommandId(UUID.randomUUID().toString());
         command.setDeviceCode(deviceId);
         command.setAction(normalizedAction);
+        command.setMode(safeMode(mode));
         command.setStatus(CommandStatus.DISPATCHED);
         command.setCreatedAt(now);
         command.setUpdatedAt(now);
         commandRepository.save(command);
+        // 命令证据：拿到主键后同事务追加
+        evidenceChainService.append(deviceId, EvidenceChainService.EVENT_COMMAND, System.currentTimeMillis(),
+                EvidenceChainService.SOURCE_DEVICE_COMMAND, command.getId(),
+                evidenceChainService.buildCommandPayload(command));
 
         boolean on = "ON".equals(normalizedAction);
         String payload = "{\"deviceId\":\"" + deviceId + "\",\"action\":\"" + normalizedAction
@@ -75,6 +83,9 @@ public class DeviceCommandService {
             commandRepository.save(command);
             device.setLampStatus(normalizedAction);
             deviceRepository.save(device);
+            evidenceChainService.append(deviceId, EvidenceChainService.EVENT_ACK, System.currentTimeMillis(),
+                    EvidenceChainService.SOURCE_DEVICE_COMMAND, command.getId(),
+                    evidenceChainService.buildAckPayload(command, "SUCCESS"));
         }
         return command;
     }
@@ -117,6 +128,10 @@ public class DeviceCommandService {
         command.setStatus(status);
         command.setUpdatedAt(LocalDateTime.now());
         commandRepository.save(command);
+        // 回执证据：用服务端接收时间作为 eventTs
+        evidenceChainService.append(topicDeviceId, EvidenceChainService.EVENT_ACK, System.currentTimeMillis(),
+                EvidenceChainService.SOURCE_DEVICE_COMMAND, command.getId(),
+                evidenceChainService.buildAckPayload(command, status.name()));
 
         if (status == CommandStatus.SUCCESS) {
             deviceRepository.findByCode(topicDeviceId).ifPresent(device -> {

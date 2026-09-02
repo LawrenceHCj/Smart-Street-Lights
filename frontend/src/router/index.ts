@@ -18,6 +18,7 @@ const router = createRouter({
         { path: 'alarms', name: 'alarms', component: () => import('../views/Alarms.vue'), meta: { title: '告警中心' } },
         { path: 'risk', name: 'risk', component: () => import('../views/RiskPrediction.vue'), meta: { title: '故障预测' } },
         { path: 'devices', name: 'devices', component: () => import('../views/DeviceManage.vue'), meta: { title: '设备管理' } },
+        { path: 'evidence', name: 'evidence', component: () => import('../views/Evidence.vue'), meta: { title: '证据链审计' } },
         { path: 'users', name: 'users', component: () => import('../views/Users.vue'), meta: { title: '用户权限' } },
         { path: 'chat', name: 'chat', component: () => import('../views/Chat.vue'), meta: { title: '智能问答' } },
       ],

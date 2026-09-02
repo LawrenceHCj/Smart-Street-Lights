@@ -26,19 +26,22 @@ public class MqttIngestionService {
     private final DeviceCommandService commandService;
     private final AlarmService alarmService;
     private final ConfigService configService;
+    private final EvidenceChainService evidenceChainService;
 
     public MqttIngestionService(DeviceRepository deviceRepository,
                                 LightPointRepository lightPointRepository,
                                 ObjectMapper objectMapper,
                                 DeviceCommandService commandService,
                                 AlarmService alarmService,
-                                ConfigService configService) {
+                                ConfigService configService,
+                                EvidenceChainService evidenceChainService) {
         this.deviceRepository = deviceRepository;
         this.lightPointRepository = lightPointRepository;
         this.objectMapper = objectMapper;
         this.commandService = commandService;
         this.alarmService = alarmService;
         this.configService = configService;
+        this.evidenceChainService = evidenceChainService;
     }
 
     @Transactional
@@ -154,6 +157,10 @@ public class MqttIngestionService {
         point.setCreatedAt(LocalDateTime.now());
         point.setServerReceivedAt(LocalDateTime.now());
         lightPointRepository.save(point);
+        // 遥测证据：拿到历史点主键后同事务追加，任一失败则业务事务一并回滚
+        evidenceChainService.append(device.getCode(), EvidenceChainService.EVENT_TELEMETRY, ts,
+                EvidenceChainService.SOURCE_LIGHT_POINT, point.getId(),
+                evidenceChainService.buildTelemetryPayload(point));
         return true;
     }
 

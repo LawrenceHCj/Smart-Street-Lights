@@ -26,6 +26,10 @@ public class DeviceCommand {
     @Column(name = "action", nullable = false)
     private String action;         // ON / OFF
 
+    /** 控制来源：MANUAL / AGENT / TIME_SCHEDULE 等（证据链命令载荷需要） */
+    @Column(name = "mode", length = 32)
+    private String mode = "MANUAL";
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private CommandStatus status = CommandStatus.DISPATCHED;

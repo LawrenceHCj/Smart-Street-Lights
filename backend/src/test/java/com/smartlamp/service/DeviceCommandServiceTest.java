@@ -24,12 +24,13 @@ class DeviceCommandServiceTest {
     @Mock private DeviceCommandRepository commandRepository;
     @Mock private DeviceRepository deviceRepository;
     @Mock private MqttPublisherService mqttPublisherService;
+    @Mock private EvidenceChainService evidenceChainService;
 
     private DeviceCommandService service;
 
     @BeforeEach
     void setUp() {
-        service = new DeviceCommandService(commandRepository, deviceRepository, mqttPublisherService);
+        service = new DeviceCommandService(commandRepository, deviceRepository, mqttPublisherService, evidenceChainService);
     }
 
     @Test

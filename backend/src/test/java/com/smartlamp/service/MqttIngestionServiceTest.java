@@ -30,13 +30,15 @@ class MqttIngestionServiceTest {
     private AlarmService alarmService;
     @Mock
     private ConfigService configService;
+    @Mock
+    private EvidenceChainService evidenceChainService;
 
     private MqttIngestionService service;
 
     @BeforeEach
     void setUp() {
         service = new MqttIngestionService(deviceRepository, lightPointRepository, new ObjectMapper(),
-                commandService, alarmService, configService);
+                commandService, alarmService, configService, evidenceChainService);
     }
 
     @Test
